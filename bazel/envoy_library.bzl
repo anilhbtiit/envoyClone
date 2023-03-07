@@ -7,11 +7,16 @@ load(
     "envoy_linkstatic",
 )
 load(":envoy_pch.bzl", "envoy_pch_copts")
+load("@bazel_skylib//rules:run_binary.bzl", "run_binary")
 load("@envoy_api//bazel:api_build_system.bzl", "api_cc_py_proto_library")
 load(
     "@envoy_build_config//:extensions_build_config.bzl",
     "CONTRIB_EXTENSION_PACKAGE_VISIBILITY",
     "EXTENSION_CONFIG_VISIBILITY",
+)
+load(
+    "@rules_rust//rust:defs.bzl",
+    "rust_library",
 )
 
 # As above, but wrapped in list form for adding to dep lists. This smell seems needed as
@@ -224,5 +229,39 @@ def envoy_proto_library(name, **kwargs):
         # such as OSS-Fuzz.
         linkstatic = 1,
         visibility = ["//visibility:public"],
+        **kwargs
+    )
+
+def envoy_rust_library(name, **kwargs):
+    rust_library(
+        name = name,
+        edition = "2021",
+        **kwargs
+    )
+
+# Invokes the cxx.rs codegen tool against the provided src file and defines an envoy_cc_library containing the generated code.
+def envoy_rust_cxx_bridge(name, src, deps = [], **kwargs):
+    run_binary(
+        name = "_%s_gen" % name,
+        srcs = [src],
+        outs = [
+            src + ".h",
+            src + ".cc",
+        ],
+        args = [
+            "$(location %s)" % src,
+            "-o",
+            "$(location %s.h)" % src,
+            "-o",
+            "$(location %s.cc)" % src,
+        ],
+        tool = "@cxx.rs//:codegen",
+    )
+
+    envoy_cc_library(
+        name = name,
+        deps = deps,
+        srcs = ["%s.cc" % src],
+        hdrs = ["%s.h" % src],
         **kwargs
     )

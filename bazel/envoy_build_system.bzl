@@ -14,6 +14,8 @@ load(
     _envoy_cc_posix_without_linux_library = "envoy_cc_posix_without_linux_library",
     _envoy_cc_win32_library = "envoy_cc_win32_library",
     _envoy_proto_library = "envoy_proto_library",
+    _envoy_rust_cxx_bridge = "envoy_rust_cxx_bridge",
+    _envoy_rust_library = "envoy_rust_library",
 )
 load(":envoy_pch.bzl", _envoy_pch_library = "envoy_pch_library")
 load(
@@ -249,6 +251,8 @@ envoy_basic_cc_library = _envoy_basic_cc_library
 envoy_cc_extension = _envoy_cc_extension
 envoy_cc_contrib_extension = _envoy_cc_contrib_extension
 envoy_cc_library = _envoy_cc_library
+envoy_rust_library = _envoy_rust_library
+envoy_rust_cxx_bridge = _envoy_rust_cxx_bridge
 envoy_cc_linux_library = _envoy_cc_linux_library
 envoy_cc_posix_library = _envoy_cc_posix_library
 envoy_cc_posix_without_linux_library = _envoy_cc_posix_without_linux_library

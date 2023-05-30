@@ -30,7 +30,9 @@ TEST(SslContextManager, createStub) {
                             "SSL is not supported in this configuration");
   EXPECT_THROW_WITH_MESSAGE(manager->createSslServerContext(scope, server_config, server_names),
                             EnvoyException, "SSL is not supported in this configuration");
-  EXPECT_NO_THROW(manager->iterateContexts([](const Envoy::Ssl::Context&) -> void {}));
+  EXPECT_NO_THROW(
+      manager->iterateContexts(static_cast<std::function<void(const Envoy::Ssl::Context&)>>(
+          [](const Envoy::Ssl::Context&) -> void {})));
 }
 
 } // namespace

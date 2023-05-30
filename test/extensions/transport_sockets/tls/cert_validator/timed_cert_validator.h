@@ -18,8 +18,9 @@ class TimedCertValidator : public DefaultCertValidator {
 public:
   TimedCertValidator(std::chrono::milliseconds validation_time_out_ms,
                      const Envoy::Ssl::CertificateValidationContextConfig* config, SslStats& stats,
-                     TimeSource& time_source, absl::optional<std::string> expected_host_name)
-      : DefaultCertValidator(config, stats, time_source),
+                     TimeSource& time_source, absl::optional<std::string> expected_host_name,
+                     Stats::Scope& scope)
+      : DefaultCertValidator(config, stats, time_source, scope),
         validation_time_out_ms_(validation_time_out_ms), expected_host_name_(expected_host_name) {}
 
   ValidationResults
@@ -46,9 +47,10 @@ private:
 class TimedCertValidatorFactory : public CertValidatorFactory {
 public:
   CertValidatorPtr createCertValidator(const Envoy::Ssl::CertificateValidationContextConfig* config,
-                                       SslStats& stats, TimeSource& time_source) override {
+                                       SslStats& stats, TimeSource& time_source,
+                                       Stats::Scope& scope) override {
     return std::make_unique<TimedCertValidator>(validation_time_out_ms_, config, stats, time_source,
-                                                expected_host_name_);
+                                                expected_host_name_, scope);
   }
 
   std::string name() const override { return "envoy.tls.cert_validator.timed_cert_validator"; }

@@ -3,6 +3,7 @@
 #include <openssl/ssl.h>
 
 #include <algorithm>
+#include <chrono>
 #include <cstddef>
 #include <cstdint>
 #include <memory>
@@ -104,7 +105,7 @@ ContextImpl::ContextImpl(Stats::Scope& scope, const Envoy::Ssl::ContextConfig& c
   }
 
   cert_validator_ = cert_validator_factory->createCertValidator(
-      config.certificateValidationContext(), stats_, time_source_);
+      config.certificateValidationContext(), stats_, time_source_, scope);
 
   const auto tls_certificates = config.tlsCertificates();
   tls_contexts_.resize(std::max(static_cast<size_t>(1), tls_certificates.size()));
@@ -114,6 +115,12 @@ ContextImpl::ContextImpl(Stats::Scope& scope, const Envoy::Ssl::ContextConfig& c
     auto& ctx = tls_contexts_[i];
     ctx.ssl_ctx_.reset(SSL_CTX_new(TLS_method()));
     ssl_contexts[i] = ctx.ssl_ctx_.get();
+
+    // No need to store cert name for default tls context of there are no TLS certificates.
+    if (!tls_certificates.empty()) {
+      ctx.cert_name_ = tls_certificates[i].get().certificateName();
+      ctx.createCertStats(scope, ctx.cert_name_);
+    }
 
     int rc = SSL_CTX_set_app_data(ctx.ssl_ctx_.get(), this);
     RELEASE_ASSERT(rc == 1, Utility::getLastCryptoError().value_or(""));
@@ -594,6 +601,21 @@ std::vector<Ssl::PrivateKeyMethodProviderSharedPtr> ContextImpl::getPrivateKeyMe
     }
   }
   return providers;
+}
+
+void ContextImpl::updateCertStats() {
+  // Update CA cert expiration time.
+  cert_validator_->refreshCertStatsWithExpirationTime();
+
+  // Update TLS certs' expiration time.
+  for (auto& ctx : tls_contexts_) {
+    auto seconds_until_expiration =
+        Utility::getSecondsUntilExpiration(ctx.cert_chain_.get(), time_source_);
+    if (seconds_until_expiration.has_value()) {
+      ctx.setExpirationOnCertStats(
+          std::chrono::duration<uint64_t>(seconds_until_expiration.value()));
+    }
+  }
 }
 
 absl::optional<uint32_t> ContextImpl::daysUntilFirstCertExpires() const {
@@ -1514,6 +1536,14 @@ void TlsContext::checkPrivateKey(const bssl::UniquePtr<EVP_PKEY>& pkey,
   UNREFERENCED_PARAMETER(pkey);
   UNREFERENCED_PARAMETER(key_path);
 #endif
+}
+
+void TlsContext::createCertStats(Stats::Scope& scope, std::string cert_name) {
+  cert_stats_ = std::make_unique<CertStats>(generateCertStats(scope, cert_name));
+}
+
+void TlsContext::setExpirationOnCertStats(std::chrono::duration<uint64_t> duration) {
+  cert_stats_->seconds_until_cert_expiring_.set(duration.count());
 }
 
 } // namespace Tls

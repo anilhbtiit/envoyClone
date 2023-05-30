@@ -19,10 +19,11 @@ static const std::string INLINE_STRING = "<inline>";
 
 CertificateValidationContextConfigImpl::CertificateValidationContextConfigImpl(
     const envoy::extensions::transport_sockets::tls::v3::CertificateValidationContext& config,
-    Api::Api& api)
+    Api::Api& api, const std::string& ca_cert_name)
     : ca_cert_(Config::DataSource::read(config.trusted_ca(), true, api)),
       ca_cert_path_(Config::DataSource::getPath(config.trusted_ca())
                         .value_or(ca_cert_.empty() ? EMPTY_STRING : INLINE_STRING)),
+      ca_cert_name_(ca_cert_name),
       certificate_revocation_list_(Config::DataSource::read(config.crl(), true, api)),
       certificate_revocation_list_path_(
           Config::DataSource::getPath(config.crl())
@@ -47,9 +48,9 @@ CertificateValidationContextConfigImpl::CertificateValidationContextConfigImpl(
 absl::StatusOr<std::unique_ptr<CertificateValidationContextConfigImpl>>
 CertificateValidationContextConfigImpl::create(
     const envoy::extensions::transport_sockets::tls::v3::CertificateValidationContext& context,
-    Api::Api& api) {
+    Api::Api& api, const std::string& name) {
   auto config = std::unique_ptr<CertificateValidationContextConfigImpl>(
-      new CertificateValidationContextConfigImpl(context, api));
+      new CertificateValidationContextConfigImpl(context, api, name));
   absl::Status status = config->initialize();
   if (status.ok()) {
     return config;

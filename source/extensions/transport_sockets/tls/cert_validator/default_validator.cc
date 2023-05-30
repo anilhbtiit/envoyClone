@@ -44,8 +44,8 @@ namespace Tls {
 
 DefaultCertValidator::DefaultCertValidator(
     const Envoy::Ssl::CertificateValidationContextConfig* config, SslStats& stats,
-    TimeSource& time_source)
-    : config_(config), stats_(stats), time_source_(time_source) {
+    TimeSource& time_source, Stats::Scope& scope)
+    : config_(config), stats_(stats), time_source_(time_source), scope_(scope) {
   if (config_ != nullptr) {
     allow_untrusted_certificate_ = config_->trustChainVerification() ==
                                    envoy::extensions::transport_sockets::tls::v3::
@@ -551,6 +551,16 @@ Envoy::Ssl::CertificateDetailsPtr DefaultCertValidator::getCaCertInformation() c
   return Utility::certificateDetails(ca_cert_.get(), getCaFileName(), time_source_);
 }
 
+void DefaultCertValidator::refreshCertStatsWithExpirationTime() {
+  auto seconds_until_expiration = Utility::getSecondsUntilExpiration(ca_cert_.get(), time_source_);
+  if (seconds_until_expiration.has_value()) {
+    if (!cert_stats_) {
+      cert_stats_ = std::make_unique<CertStats>(generateCertStats(scope_, config_->caCertName()));
+    }
+    cert_stats_->seconds_until_cert_expiring_.set(seconds_until_expiration.value());
+  }
+}
+
 absl::optional<uint32_t> DefaultCertValidator::daysUntilFirstCertExpires() const {
   return Utility::getDaysUntilExpiration(ca_cert_.get(), time_source_);
 }
@@ -558,8 +568,9 @@ absl::optional<uint32_t> DefaultCertValidator::daysUntilFirstCertExpires() const
 class DefaultCertValidatorFactory : public CertValidatorFactory {
 public:
   CertValidatorPtr createCertValidator(const Envoy::Ssl::CertificateValidationContextConfig* config,
-                                       SslStats& stats, TimeSource& time_source) override {
-    return std::make_unique<DefaultCertValidator>(config, stats, time_source);
+                                       SslStats& stats, TimeSource& time_source,
+                                       Stats::Scope& scope) override {
+    return std::make_unique<DefaultCertValidator>(config, stats, time_source, scope);
   }
 
   std::string name() const override { return "envoy.tls.cert_validator.default"; }

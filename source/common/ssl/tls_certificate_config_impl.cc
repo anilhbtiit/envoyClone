@@ -28,11 +28,13 @@ static const std::string INLINE_STRING = "<inline>";
 
 TlsCertificateConfigImpl::TlsCertificateConfigImpl(
     const envoy::extensions::transport_sockets::tls::v3::TlsCertificate& config,
-    Server::Configuration::TransportSocketFactoryContext& factory_context, Api::Api& api)
+    Server::Configuration::TransportSocketFactoryContext& factory_context, Api::Api& api,
+    const std::string& certificate_name)
     : certificate_chain_(Config::DataSource::read(config.certificate_chain(), true, api)),
       certificate_chain_path_(
           Config::DataSource::getPath(config.certificate_chain())
               .value_or(certificate_chain_.empty() ? EMPTY_STRING : INLINE_STRING)),
+      certificate_name_(certificate_name),
       private_key_(Config::DataSource::read(config.private_key(), true, api)),
       private_key_path_(Config::DataSource::getPath(config.private_key())
                             .value_or(private_key_.empty() ? EMPTY_STRING : INLINE_STRING)),

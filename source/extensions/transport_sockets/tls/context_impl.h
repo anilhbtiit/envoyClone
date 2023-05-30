@@ -45,10 +45,12 @@ struct TlsContext {
   bssl::UniquePtr<SSL_CTX> ssl_ctx_;
   bssl::UniquePtr<X509> cert_chain_;
   std::string cert_chain_file_path_;
+  std::string cert_name_;
   Ocsp::OcspResponseWrapperPtr ocsp_response_;
   bool is_ecdsa_{};
   bool is_must_staple_{};
   Ssl::PrivateKeyMethodProviderSharedPtr private_key_method_provider_{};
+  CertStatsPtr cert_stats_;
 
   std::string getCertChainFileName() const { return cert_chain_file_path_; };
   bool isCipherEnabled(uint16_t cipher_id, uint16_t client_version);
@@ -61,6 +63,8 @@ struct TlsContext {
   void loadPkcs12(const std::string& data, const std::string& data_path,
                   const std::string& password);
   void checkPrivateKey(const bssl::UniquePtr<EVP_PKEY>& pkey, const std::string& key_path);
+  void createCertStats(Stats::Scope& scope, std::string cert_name);
+  void setExpirationOnCertStats(std::chrono::duration<uint64_t> duration);
 };
 
 class ContextImpl : public virtual Envoy::Ssl::Context,
@@ -84,6 +88,7 @@ public:
 
   static int sslSocketIndex();
   // Ssl::Context
+  void updateCertStats() override;
   absl::optional<uint32_t> daysUntilFirstCertExpires() const override;
   Envoy::Ssl::CertificateDetailsPtr getCaCertInformation() const override;
   std::vector<Envoy::Ssl::CertificateDetailsPtr> getCertChainInformation() const override;

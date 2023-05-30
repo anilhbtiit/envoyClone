@@ -16,7 +16,8 @@ class PlatformBridgeCertValidatorFactory : public CertValidatorFactory,
                                            public Config::TypedFactory {
 public:
   CertValidatorPtr createCertValidator(const Envoy::Ssl::CertificateValidationContextConfig* config,
-                                       SslStats& stats, TimeSource& time_source) override;
+                                       SslStats& stats, TimeSource& time_source,
+                                       Stats::Scope& scope) override;
 
   std::string name() const override {
     return "envoy_mobile.cert_validator.platform_bridge_cert_validator";

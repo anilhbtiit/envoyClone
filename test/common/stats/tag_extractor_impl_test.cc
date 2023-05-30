@@ -444,6 +444,15 @@ TEST(TagExtractorTest, DefaultTagExtractors) {
   connection_limit_prefix.value_ = "my_connection_limit_prefix";
   regex_tester.testRegex("connection_limit.my_connection_limit_prefix.limited_connections",
                          "connection_limit.limited_connections", {connection_limit_prefix});
+
+  // TLS certificates
+  Tag certificate_name;
+  certificate_name.name_ = tag_names.TLS_CERTIFICATE;
+  certificate_name.value_ = "server_cert";
+
+  listener_address.value_ = "0.0.0.0_0";
+  regex_tester.testRegex("listener.0.0.0.0_0.ssl.certificate.server_cert",
+                         "listener.ssl.certificate", {listener_address, certificate_name});
 }
 
 TEST(TagExtractorTest, ExtAuthzTagExtractors) {

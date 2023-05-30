@@ -157,6 +157,8 @@ public:
   const std::string THRIFT_PREFIX = "envoy.thrift_prefix";
   // Stats prefix for the Redis Proxy network filter
   const std::string REDIS_PREFIX = "envoy.redis_prefix";
+  // TLS certificate.
+  const std::string TLS_CERTIFICATE = "envoy.certificate";
 
   // Mapping from the names above to their respective regex strings.
   const std::vector<std::pair<std::string, std::string>> name_regex_pairs_;

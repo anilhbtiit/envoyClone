@@ -9,26 +9,36 @@ licenses(["notice"])  # Apache 2
 envoy_package()
 
 envoy_cc_library(
-    name = "io_uring_interface",
-    hdrs = [
-        "io_uring.h",
-    ],
+    name = "io_uring_impl_lib",
+    srcs = ["io_uring_impl.cc"],
+    hdrs = ["io_uring_impl.h"],
+    external_deps = ["uring"],
     deps = [
-        "//source/common/network:address_lib",
+        "//envoy/common/io:io_uring_interface",
+        "//envoy/thread_local:thread_local_interface",
     ],
 )
 
 envoy_cc_library(
-    name = "io_uring_impl_lib",
-    srcs = [
-        "io_uring_impl.cc",
-    ],
-    hdrs = [
-        "io_uring_impl.h",
-    ],
-    external_deps = ["uring"],
-    tags = ["nocompdb"],
+    name = "io_uring_worker_lib",
+    srcs = ["io_uring_worker_impl.cc"],
+    hdrs = ["io_uring_worker_impl.h"],
     deps = [
-        ":io_uring_interface",
+        ":io_uring_impl_lib",
+        "//envoy/common/io:io_uring_interface",
+        "//envoy/event:file_event_interface",
+        "//source/common/buffer:buffer_lib",
+        "//source/common/common:linked_object",
+    ],
+)
+
+envoy_cc_library(
+    name = "io_uring_factory_impl_lib",
+    srcs = ["io_uring_factory_impl.cc"],
+    hdrs = ["io_uring_factory_impl.h"],
+    deps = [
+        ":io_uring_worker_lib",
+        "//envoy/common/io:io_uring_interface",
+        "//envoy/thread_local:thread_local_interface",
     ],
 )

@@ -1,0 +1,58 @@
+syntax = "proto3";
+
+package envoy.extensions.filters.network.smtp_proxy.v3alpha;
+
+import "udpa/annotations/status.proto";
+import "validate/validate.proto";
+
+option java_package = "io.envoyproxy.envoy.extensions.filters.network.smtp_proxy.v3alpha";
+option java_outer_classname = "SmtpProxyProto";
+option java_multiple_files = true;
+option go_package = "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/network/smtp_proxy/v3alpha";
+option (udpa.annotations.file_status).work_in_progress = true;
+option (udpa.annotations.file_status).package_version_status = ACTIVE;
+
+// [#protodoc-title: Smtp proxy]
+// Smtp Proxy :ref:`configuration overview
+// <config_network_filters_smtp_proxy>`.
+// [#extension: envoy.filters.network.smtp_proxy]
+
+message SmtpProxy {
+  // SMTP STARTTLS operational modes.
+  // Refer to SMTP STARTTLS spec rfc3207 https://www.rfc-editor.org/rfc/rfc3207.html for details
+  enum SSLMode {
+    // Do not encrypt upstream connection to the server.
+    DISABLE = 0;
+
+    // Upstream: initiate STARTTLS to the upstream if it advertises
+    // the capability. If the upstream returns an error response to
+    // the STARTTLS command or the TLS negotiation fails, the session
+    // is terminated.
+    // Downstream: insert the STARTTLS capability into the upstream's
+    // EHLO response if not present and service the STARTTLS command
+    // from the downstream locally (i.e. do not forward the STARTTLS
+    // command to the upstream)
+    ENABLE = 1;
+
+    // Like ENABLE but in addition:
+    // Upstream: if the server does not advertise the STARTTLS
+    // extension, the session is terminated.
+    // Downstream: if the SMTP command following EHLO is not STARTTLS,
+    // terminate the session.
+    // In either case, REQUIRE must only be used with well-known peers
+    // that always implement STARTTLS.
+    REQUIRE = 2;
+  }
+
+  // The human readable prefix to use when emitting :ref:`statistics
+  // <config_network_filters_smtp_proxy_stats>`.
+  string stat_prefix = 1 [(validate.rules).string = {min_len: 1}];
+
+  // Controls whether to terminate SSL session initiated by a client.
+  // Defaults to DISABLE.
+  SSLMode downstream_ssl = 3;
+
+  // Controls whether to establish upstream SSL connection to the server.
+  // Defaults to DISABLE.
+  SSLMode upstream_ssl = 4;
+}

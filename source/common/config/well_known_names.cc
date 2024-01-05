@@ -205,6 +205,9 @@ TagNameValues::TagNameValues() {
   // connection_limit.(<stat_prefix>.)*
   addTokenized(CONNECTION_LIMIT_PREFIX, "connection_limit.$.**");
 
+  // (<stat_prefix>.).rbac.**
+  addTokenized(RBAC_PREFIX, "$.rbac.**");
+
   // Signing algorithms and ciphers have the same pattern so they use the same regex.
   // listener.[<address>.]ssl.sigalgs.(<algorithm>)
   addRe2(TLS_CERTIFICATE, R"(^<LISTENER_OR_CLUSTER_WITH_NAME>\.ssl\.certificate(\.(<TAG_VALUE>))$)",

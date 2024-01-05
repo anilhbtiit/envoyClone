@@ -453,6 +453,12 @@ TEST(TagExtractorTest, DefaultTagExtractors) {
   listener_address.value_ = "0.0.0.0_0";
   regex_tester.testRegex("listener.0.0.0.0_0.ssl.certificate.server_cert",
                          "listener.ssl.certificate", {listener_address, certificate_name});
+
+  // RBAC Filter Prefix
+  Tag rbac_prefix;
+  rbac_prefix.name_ = tag_names.RBAC_PREFIX;
+  rbac_prefix.value_ = "my_rbac_prefix";
+  regex_tester.testRegex("my_rbac_prefix.rbac.allowed", "rbac.allowed", {rbac_prefix});
 }
 
 TEST(TagExtractorTest, ExtAuthzTagExtractors) {

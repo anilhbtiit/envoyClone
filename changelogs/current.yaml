@@ -377,7 +377,7 @@ new_features:
     <envoy_v3_api_field_extensions.filters.network.zookeeper_proxy.v3.ZooKeeperProxy.enable_per_opcode_decoder_error_metrics>`.
 - area: tls
   change: |
-    Added new metric for emitting seconds since UNIX epoch of expirations of TLS & CA certificates.
+    Added new metric for emitting seconds since UNIX epoch of expirations of TLS and CA certificates.
     They are rooted at cluster.<cluster_name>.ssl.certificate.<cert_name>.
     and at listener.<address>.ssl.certificate.<cert_name>. namespace.
 

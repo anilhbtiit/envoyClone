@@ -59,6 +59,7 @@ The following sandboxes are available:
     golang-network
     grpc_bridge
     gzip
+    http3
     jaeger_native_tracing
     jaeger_tracing
     kafka

@@ -57,8 +57,8 @@ std::vector<TlsCertificateConfigProviderWithName> getTlsCertificateConfigProvide
           throwEnvoyExceptionOrPanic(
               fmt::format("Unknown static secret: {}", sds_secret_config.name()));
         }
-        providers.push_back(TlsCertificateConfigProviderWithName{sds_secret_config.name(),
-                                                                         secret_provider});
+        providers.push_back(
+            TlsCertificateConfigProviderWithName{sds_secret_config.name(), secret_provider});
       }
     }
     return providers;
@@ -88,8 +88,7 @@ Secret::CertificateValidationContextConfigProviderSharedPtr getProviderFromSds(
   return nullptr;
 }
 
-CertificateValidationContextConfigProviderWithName
-getCertificateValidationContextConfigProvider(
+CertificateValidationContextConfigProviderWithName getCertificateValidationContextConfigProvider(
     const envoy::extensions::transport_sockets::tls::v3::CommonTlsContext& config,
     Server::Configuration::TransportSocketFactoryContext& factory_context,
     std::unique_ptr<envoy::extensions::transport_sockets::tls::v3::CertificateValidationContext>*

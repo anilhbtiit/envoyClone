@@ -232,7 +232,7 @@ std::string Utility::getSubjectFromCertificate(X509& cert) {
   return getRFC2253NameFromCertificate(cert, CertName::Subject);
 }
 
-absl::optional<uint64_t> Utility::getSecondsSinceEpoch(const X509* cert) {
+absl::optional<uint64_t> Utility::getExpirationUnixTime(const X509* cert) {
   if (cert == nullptr) {
     return absl::nullopt;
   }

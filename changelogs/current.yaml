@@ -48,5 +48,10 @@ new_features:
   change: |
     added support for :ref:`%UPSTREAM_CONNECTION_ID% <config_access_log_format_upstream_connection_id>` for the upstream connection
     identifier.
+- area: tls
+  change: |
+    Added new metric for emitting seconds since UNIX epoch of expirations of TLS and CA certificates.
+    They are rooted at ``cluster.<cluster_name>.ssl.certificate.<cert_name>.``
+    and at ``listener.<address>.ssl.certificate.<cert_name>.`` namespace.
 
 deprecated:

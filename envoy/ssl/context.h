@@ -1,10 +1,12 @@
 #pragma once
 
+#include <chrono>
 #include <memory>
 #include <string>
 
 #include "envoy/admin/v3/certs.pb.h"
 #include "envoy/common/pure.h"
+#include "envoy/stats/store.h"
 
 #include "absl/types/optional.h"
 
@@ -19,6 +21,11 @@ using CertificateDetailsPtr = std::unique_ptr<envoy::admin::v3::CertificateDetai
 class Context {
 public:
   virtual ~Context() = default;
+
+  /**
+   * @brief Updates the certificate stats for this context.
+   */
+  virtual void updateCertStats() PURE;
 
   /**
    * @return the number of days in this context until the next certificate will expire, the value is

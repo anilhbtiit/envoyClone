@@ -36,6 +36,8 @@ class SslContextManagerNoTlsStub final : public Envoy::Ssl::ContextManager {
 
   void iterateContexts(std::function<void(const Envoy::Ssl::Context&)> /* callback */) override{};
 
+  void iterateContexts(std::function<void(Envoy::Ssl::Context&)> /* callback */) override{};
+
   Ssl::PrivateKeyMethodManager& privateKeyMethodManager() override { throwException(); }
 
   void removeContext(const Envoy::Ssl::ContextSharedPtr& old_context) override {

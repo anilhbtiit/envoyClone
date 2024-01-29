@@ -35,7 +35,7 @@ namespace Tls {
 class DefaultCertValidator : public CertValidator, Logger::Loggable<Logger::Id::connection> {
 public:
   DefaultCertValidator(const Envoy::Ssl::CertificateValidationContextConfig* config,
-                       SslStats& stats, TimeSource& time_source);
+                       SslStats& stats, TimeSource& time_source, Stats::Scope& scope);
 
   ~DefaultCertValidator() override = default;
 
@@ -52,7 +52,7 @@ public:
 
   void updateDigestForSessionId(bssl::ScopedEVP_MD_CTX& md, uint8_t hash_buffer[EVP_MAX_MD_SIZE],
                                 unsigned hash_length) override;
-
+  void refreshCertStatsWithExpirationTime() override;
   absl::optional<uint32_t> daysUntilFirstCertExpires() const override;
   std::string getCaFileName() const override { return ca_file_path_; };
   Envoy::Ssl::CertificateDetailsPtr getCaCertInformation() const override;
@@ -108,10 +108,13 @@ private:
                                  Envoy::Ssl::ClientValidationStatus& detailed_status,
                                  std::string* error_details, uint8_t* out_alert);
 
+  const std::string cert_name_;
   const Envoy::Ssl::CertificateValidationContextConfig* config_;
   SslStats& stats_;
   TimeSource& time_source_;
+  Stats::Scope& scope_;
 
+  CertStatsPtr cert_stats_;
   bool allow_untrusted_certificate_{false};
   bssl::UniquePtr<X509> ca_cert_;
   std::string ca_file_path_;

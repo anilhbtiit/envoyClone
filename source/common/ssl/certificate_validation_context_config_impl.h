@@ -18,12 +18,13 @@ public:
   // Create a CertificateValidationContextConfigImpl or return an error status.
   static absl::StatusOr<std::unique_ptr<CertificateValidationContextConfigImpl>>
   create(const envoy::extensions::transport_sockets::tls::v3::CertificateValidationContext& context,
-         Api::Api& api);
+         Api::Api& api, const std::string& ca_cert_name);
 
   absl::Status initialize();
 
   const std::string& caCert() const override { return ca_cert_; }
   const std::string& caCertPath() const override { return ca_cert_path_; }
+  const std::string& caCertName() const override { return ca_cert_name_; }
   const std::string& certificateRevocationList() const override {
     return certificate_revocation_list_;
   }
@@ -61,7 +62,7 @@ public:
 protected:
   CertificateValidationContextConfigImpl(
       const envoy::extensions::transport_sockets::tls::v3::CertificateValidationContext& config,
-      Api::Api& api);
+      Api::Api& api, const std::string& name);
 
 private:
   static std::vector<envoy::extensions::transport_sockets::tls::v3::SubjectAltNameMatcher>
@@ -69,6 +70,7 @@ private:
       const envoy::extensions::transport_sockets::tls::v3::CertificateValidationContext& config);
   const std::string ca_cert_;
   const std::string ca_cert_path_;
+  const std::string ca_cert_name_;
   const std::string certificate_revocation_list_;
   const std::string certificate_revocation_list_path_;
   const std::vector<envoy::extensions::transport_sockets::tls::v3::SubjectAltNameMatcher>

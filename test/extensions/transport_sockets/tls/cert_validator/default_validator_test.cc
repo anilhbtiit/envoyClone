@@ -140,7 +140,7 @@ TEST(DefaultCertValidatorTest, TestCertificateVerificationWithSANMatcher) {
   auto default_validator =
       std::make_unique<Extensions::TransportSockets::Tls::DefaultCertValidator>(
           /*CertificateValidationContextConfig=*/nullptr, stats,
-          Event::GlobalTimeSystem().timeSystem());
+          Event::GlobalTimeSystem().timeSystem(), *test_store.rootScope());
 
   bssl::UniquePtr<X509> cert = readCertFromFile(TestEnvironment::substitute(
       "{{ test_rundir }}/test/extensions/transport_sockets/tls/test_data/san_dns_cert.pem"));
@@ -173,7 +173,7 @@ TEST(DefaultCertValidatorTest, TestCertificateVerificationWithNoValidationContex
   auto default_validator =
       std::make_unique<Extensions::TransportSockets::Tls::DefaultCertValidator>(
           /*CertificateValidationContextConfig=*/nullptr, stats,
-          Event::GlobalTimeSystem().timeSystem());
+          Event::GlobalTimeSystem().timeSystem(), *test_store.rootScope());
 
   EXPECT_EQ(default_validator->verifyCertificate(/*cert=*/nullptr, /*verify_san_list=*/{},
                                                  /*subject_alt_name_matchers=*/{}, nullptr,
@@ -197,7 +197,7 @@ TEST(DefaultCertValidatorTest, TestCertificateVerificationWithEmptyCertChain) {
   auto default_validator =
       std::make_unique<Extensions::TransportSockets::Tls::DefaultCertValidator>(
           /*CertificateValidationContextConfig=*/nullptr, stats,
-          Event::GlobalTimeSystem().timeSystem());
+          Event::GlobalTimeSystem().timeSystem(), *test_store.rootScope());
 
   SSLContextPtr ssl_ctx = SSL_CTX_new(TLS_method());
   bssl::UniquePtr<STACK_OF(X509)> cert_chain(sk_X509_new_null());
@@ -246,7 +246,8 @@ TEST(DefaultCertValidatorTest, WithVerifyDepth) {
                                                                ca_cert_str, 2);
   auto default_validator =
       std::make_unique<Extensions::TransportSockets::Tls::DefaultCertValidator>(
-          test_config.get(), stats, Event::GlobalTimeSystem().timeSystem());
+          test_config.get(), stats, Event::GlobalTimeSystem().timeSystem(),
+          *test_store.rootScope());
 
   STACK_OF(X509)* intermediates = cert_chain.get();
   SSLContextPtr ssl_ctx = SSL_CTX_new(TLS_method());
@@ -266,7 +267,7 @@ TEST(DefaultCertValidatorTest, WithVerifyDepth) {
   test_config = std::make_unique<TestCertificateValidationContextConfig>(typed_conf, false,
                                                                          san_matchers, ca_cert_str);
   default_validator = std::make_unique<Extensions::TransportSockets::Tls::DefaultCertValidator>(
-      test_config.get(), stats, Event::GlobalTimeSystem().timeSystem());
+      test_config.get(), stats, Event::GlobalTimeSystem().timeSystem(), *test_store.rootScope());
 
   // Re-initialize context
   ssl_ctx = SSL_CTX_new(TLS_method());
@@ -296,6 +297,7 @@ public:
   };
   const std::string& caCert() const override { return s_; }
   const std::string& caCertPath() const override { return s_; }
+  const std::string& caCertName() const override { return s_; }
   const std::string& certificateRevocationList() const override { return s_; }
   const std::string& certificateRevocationListPath() const override { return s_; }
   const std::vector<envoy::extensions::transport_sockets::tls::v3::SubjectAltNameMatcher>&
@@ -330,7 +332,8 @@ TEST(DefaultCertValidatorTest, TestUnexpectedSanMatcherType) {
   Stats::TestUtil::TestStore store;
   auto ssl_stats = generateSslStats(*store.rootScope());
   auto validator = std::make_unique<DefaultCertValidator>(mock_context_config.get(), ssl_stats,
-                                                          Event::GlobalTimeSystem().timeSystem());
+                                                          Event::GlobalTimeSystem().timeSystem(),
+                                                          *store.rootScope());
   auto ctx = std::vector<SSL_CTX*>();
   EXPECT_THROW_WITH_REGEX(validator->initializeSslContexts(ctx, false), EnvoyException,
                           "Failed to create string SAN matcher of type.*");
@@ -346,7 +349,8 @@ TEST(DefaultCertValidatorTest, TestInitializeSslContextFailure) {
   Stats::TestUtil::TestStore store;
   auto ssl_stats = generateSslStats(*store.rootScope());
   auto validator = std::make_unique<DefaultCertValidator>(mock_context_config.get(), ssl_stats,
-                                                          Event::GlobalTimeSystem().timeSystem());
+                                                          Event::GlobalTimeSystem().timeSystem(),
+                                                          *store.rootScope());
   auto ctx = std::vector<SSL_CTX*>();
   EXPECT_THROW_WITH_REGEX(validator->initializeSslContexts(ctx, false), EnvoyException,
                           "Failed to load trusted CA certificates from.*");

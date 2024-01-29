@@ -179,7 +179,7 @@ TEST_F(SdsApiTest, DynamicTlsCertificateUpdateSuccess) {
   EXPECT_TRUE(subscription_factory_.callbacks_->onConfigUpdate(decoded_resources.refvec_, "").ok());
 
   testing::NiceMock<Server::Configuration::MockTransportSocketFactoryContext> ctx;
-  Ssl::TlsCertificateConfigImpl tls_config(*sds_api.secret(), ctx, *api_);
+  Ssl::TlsCertificateConfigImpl tls_config(*sds_api.secret(), ctx, *api_, "cert_name");
   const std::string cert_pem =
       "{{ test_rundir }}/test/extensions/transport_sockets/tls/test_data/selfsigned_cert.pem";
   EXPECT_EQ(TestEnvironment::readFileToStringForTest(TestEnvironment::substitute(cert_pem)),
@@ -593,7 +593,7 @@ TEST_F(SdsApiTest, DeltaUpdateSuccess) {
       subscription_factory_.callbacks_->onConfigUpdate(decoded_resources.refvec_, {}, "").ok());
 
   testing::NiceMock<Server::Configuration::MockTransportSocketFactoryContext> ctx;
-  Ssl::TlsCertificateConfigImpl tls_config(*sds_api.secret(), ctx, *api_);
+  Ssl::TlsCertificateConfigImpl tls_config(*sds_api.secret(), ctx, *api_, "cert_name");
   const std::string cert_pem =
       "{{ test_rundir }}/test/extensions/transport_sockets/tls/test_data/selfsigned_cert.pem";
   EXPECT_EQ(TestEnvironment::readFileToStringForTest(TestEnvironment::substitute(cert_pem)),
@@ -635,7 +635,8 @@ TEST_F(SdsApiTest, DynamicCertificateValidationContextUpdateSuccess) {
   EXPECT_TRUE(subscription_factory_.callbacks_->onConfigUpdate(decoded_resources.refvec_, "").ok());
 
   auto cvc_config =
-      Ssl::CertificateValidationContextConfigImpl::create(*sds_api.secret(), *api_).value();
+      Ssl::CertificateValidationContextConfigImpl::create(*sds_api.secret(), *api_, "ca_cert_name")
+          .value();
   const std::string ca_cert =
       "{{ test_rundir }}/test/extensions/transport_sockets/tls/test_data/ca_cert.pem";
   EXPECT_EQ(TestEnvironment::readFileToStringForTest(TestEnvironment::substitute(ca_cert)),
@@ -711,7 +712,9 @@ TEST_F(SdsApiTest, DefaultCertificateValidationContextTest) {
   envoy::extensions::transport_sockets::tls::v3::CertificateValidationContext merged_cvc =
       default_cvc;
   merged_cvc.MergeFrom(*sds_api.secret());
-  auto cvc_config = Ssl::CertificateValidationContextConfigImpl::create(merged_cvc, *api_).value();
+  auto cvc_config =
+      Ssl::CertificateValidationContextConfigImpl::create(merged_cvc, *api_, "ca_cert_name")
+          .value();
   // Verify that merging CertificateValidationContext applies logical OR to bool
   // field.
   EXPECT_TRUE(cvc_config->allowExpiredCertificate());

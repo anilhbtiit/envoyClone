@@ -32,10 +32,10 @@ using X509StorePtr = CSmartPtr<X509_STORE, X509_STORE_free>;
 
 class SPIFFEValidator : public CertValidator {
 public:
-  SPIFFEValidator(SslStats& stats, TimeSource& time_source)
-      : stats_(stats), time_source_(time_source){};
+  SPIFFEValidator(SslStats& stats, TimeSource& time_source, Stats::Scope& scope)
+      : stats_(stats), time_source_(time_source), scope_(scope){};
   SPIFFEValidator(const Envoy::Ssl::CertificateValidationContextConfig* config, SslStats& stats,
-                  TimeSource& time_source);
+                  TimeSource& time_source, Stats::Scope& scope);
   ~SPIFFEValidator() override = default;
 
   // Tls::CertValidator
@@ -52,7 +52,7 @@ public:
 
   void updateDigestForSessionId(bssl::ScopedEVP_MD_CTX& md, uint8_t hash_buffer[EVP_MAX_MD_SIZE],
                                 unsigned hash_length) override;
-
+  void refreshCertStatsWithExpirationTime() override;
   absl::optional<uint32_t> daysUntilFirstCertExpires() const override;
   std::string getCaFileName() const override { return ca_file_name_; }
   Envoy::Ssl::CertificateDetailsPtr getCaCertInformation() const override;
@@ -77,9 +77,12 @@ private:
   std::string ca_file_name_;
   std::vector<SanMatcherPtr> subject_alt_name_matchers_{};
   absl::flat_hash_map<std::string, X509StorePtr> trust_bundle_stores_;
+  absl::flat_hash_map<std::string, CertStatsPtr> cert_stats_map_;
 
+  const std::string cert_name_;
   SslStats& stats_;
   TimeSource& time_source_;
+  Stats::Scope& scope_;
 };
 
 } // namespace Tls

@@ -207,6 +207,11 @@ TagNameValues::TagNameValues() {
 
   // (<stat_prefix>.).rbac.**
   addTokenized(RBAC_PREFIX, "$.rbac.**");
+
+  // Signing algorithms and ciphers have the same pattern so they use the same regex.
+  // listener.[<address>.]ssl.sigalgs.(<algorithm>)
+  addRe2(TLS_CERTIFICATE, R"(^<LISTENER_OR_CLUSTER_WITH_NAME>\.ssl\.certificate(\.(<TAG_VALUE>))$)",
+         ".ssl.certificate.");
 }
 
 void TagNameValues::addRe2(const std::string& name, const std::string& regex,

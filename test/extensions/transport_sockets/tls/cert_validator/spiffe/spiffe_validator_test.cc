@@ -44,7 +44,8 @@ public:
     TestUtility::loadFromYaml(yaml, typed_conf);
     config_ = std::make_unique<TestCertificateValidationContextConfig>(
         typed_conf, allow_expired_certificate_, san_matchers_);
-    validator_ = std::make_unique<SPIFFEValidator>(config_.get(), stats_, time_source);
+    validator_ =
+        std::make_unique<SPIFFEValidator>(config_.get(), stats_, time_source, *store_.rootScope());
   }
 
   void initialize(std::string yaml) {
@@ -52,11 +53,13 @@ public:
     TestUtility::loadFromYaml(yaml, typed_conf);
     config_ = std::make_unique<TestCertificateValidationContextConfig>(
         typed_conf, allow_expired_certificate_, san_matchers_);
-    validator_ =
-        std::make_unique<SPIFFEValidator>(config_.get(), stats_, config_->api().timeSource());
+    validator_ = std::make_unique<SPIFFEValidator>(
+        config_.get(), stats_, config_->api().timeSource(), *store_.rootScope());
   };
 
-  void initialize() { validator_ = std::make_unique<SPIFFEValidator>(stats_, time_system_); }
+  void initialize() {
+    validator_ = std::make_unique<SPIFFEValidator>(stats_, time_system_, *store_.rootScope());
+  }
 
   // Getter.
   SPIFFEValidator& validator() { return *validator_; }

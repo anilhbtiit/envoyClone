@@ -31,8 +31,8 @@ namespace Tls {
 using SPIFFEConfig = envoy::extensions::transport_sockets::tls::v3::SPIFFECertValidatorConfig;
 
 SPIFFEValidator::SPIFFEValidator(const Envoy::Ssl::CertificateValidationContextConfig* config,
-                                 SslStats& stats, TimeSource& time_source)
-    : stats_(stats), time_source_(time_source) {
+                                 SslStats& stats, TimeSource& time_source, Stats::Scope& scope)
+    : cert_name_(config->caCertName()), stats_(stats), time_source_(time_source), scope_(scope) {
   ASSERT(config != nullptr);
   allow_expired_certificate_ = config->allowExpiredCertificate();
 
@@ -282,6 +282,26 @@ std::string SPIFFEValidator::extractTrustDomain(const std::string& san) {
   return "";
 }
 
+void SPIFFEValidator::refreshCertStatsWithExpirationTime() {
+  // TODO(peterl328): Due to current interface, we only receive one cert name.
+  // Since we may have multiple certificates here, we will use the provided cert name and append
+  // an index to it. Assumes the order in the ca_certs_ vector doesn't change.
+  int idx = 0;
+  for (auto& cert : ca_certs_) {
+    const absl::optional<uint32_t> expiration_unix_time =
+        Utility::getExpirationUnixTime(cert.get());
+    if (expiration_unix_time.has_value()) {
+      std::string cert_name = absl::StrCat(cert_name_, idx);
+      auto result = cert_stats_map_.insert({cert_name, nullptr});
+      if (result.second) {
+        result.first->second = std::make_unique<CertStats>(generateCertStats(scope_, cert_name));
+      }
+      result.first->second->expiration_unix_time_.set(expiration_unix_time.value());
+    }
+    idx++;
+  }
+}
+
 absl::optional<uint32_t> SPIFFEValidator::daysUntilFirstCertExpires() const {
   if (ca_certs_.empty()) {
     return absl::make_optional(std::numeric_limits<uint32_t>::max());
@@ -310,8 +330,9 @@ Envoy::Ssl::CertificateDetailsPtr SPIFFEValidator::getCaCertInformation() const 
 class SPIFFEValidatorFactory : public CertValidatorFactory {
 public:
   CertValidatorPtr createCertValidator(const Envoy::Ssl::CertificateValidationContextConfig* config,
-                                       SslStats& stats, TimeSource& time_source) override {
-    return std::make_unique<SPIFFEValidator>(config, stats, time_source);
+                                       SslStats& stats, TimeSource& time_source,
+                                       Stats::Scope& scope) override {
+    return std::make_unique<SPIFFEValidator>(config, stats, time_source, scope);
   }
 
   std::string name() const override { return "envoy.tls.cert_validator.spiffe"; }

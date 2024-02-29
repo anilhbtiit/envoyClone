@@ -339,8 +339,13 @@ public:
   }
 
   bool nextChunk(Buffer::Instance& response) override {
-    response.move(response_);
-    return false;
+    // Artificially make 1M chunks from the buffered admin output, to see if we
+    // can observe chunking in a live server.
+    std::string str = response_.toString();
+    absl::string_view head(str.data(), std::min(size_t(1000000), str.size()));
+    response.add(head);
+    response_.drain(head.size());
+    return response_.length() > 0;
   }
 
 private:

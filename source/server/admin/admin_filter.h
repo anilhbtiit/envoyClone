@@ -24,11 +24,29 @@ class AdminFilter : public Http::PassThroughFilter,
                     public AdminStream,
                     Logger::Loggable<Logger::Id::admin> {
 public:
-  using AdminServerCallbackFunction = std::function<Http::Code(
+  using AdminServerCallbackFunction = std::function<Admin::RequestPtr(
       absl::string_view path_and_query, Http::ResponseHeaderMap& response_headers,
       Buffer::OwnedImpl& response, AdminFilter& filter)>;
 
-  AdminFilter(Admin::GenRequestFn admin_handler_func);
+  class WatermarkCallbacks : public Http::DownstreamWatermarkCallbacks {
+  public:
+    explicit WatermarkCallbacks(AdminFilter& filter) : filter_(filter) {}
+    ~WatermarkCallbacks() override = default;
+    void onAboveWriteBufferHighWatermark() override {
+      ENVOY_LOG_MISC(error, "Above high-watermark callback");
+      filter_.can_write_ = false;
+    }
+    void onBelowWriteBufferLowWatermark() override {
+      filter_.can_write_ = true;
+      ENVOY_LOG_MISC(error, "Below high-watermark callback");
+      filter_.nextChunk();
+    }
+
+  private:
+    AdminFilter& filter_;
+  };
+
+  explicit AdminFilter(Admin::GenRequestFn admin_request_func);
 
   // Http::StreamFilterBase
   // Handlers relying on the reference should use addOnDestroyCallback()
@@ -58,10 +76,19 @@ private:
    * Called when an admin request has been completely received.
    */
   void onComplete();
-  Admin::GenRequestFn admin_handler_fn_;
+
+  /**
+   * Called when the system is ready for admin to write the next chunk.
+   */
+  void nextChunk();
+
+  Admin::GenRequestFn admin_request_fn_;
   Http::RequestHeaderMap* request_headers_{};
   std::list<std::function<void()>> on_destroy_callbacks_;
   bool end_stream_on_complete_ = true;
+  Admin::RequestPtr request_;
+  bool can_write_{true};
+  WatermarkCallbacks watermark_callbacks_{*this};
 };
 
 } // namespace Server

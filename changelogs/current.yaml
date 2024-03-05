@@ -271,6 +271,10 @@ new_features:
 - area: tracing
   change: |
     Added support to configure a Dynatrace sampler for the OpenTelemetry tracer.
+- area: original_ip_detection extension
+  change: |
+    The :ref:`xff <envoy_v3_api_msg_extensions.http.original_ip_detection.xff.v3.XffConfig>`
+    original IP detection method now supports using a list of trusted CIDRs when parsing ``x-forwarded-for``.
 
 deprecated:
 - area: listener

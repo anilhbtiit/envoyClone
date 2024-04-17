@@ -49,9 +49,9 @@ private:
                               public Logger::Loggable<Logger::Id::compression> {
     QatzstdThreadLocal();
     ~QatzstdThreadLocal() override;
-    void* GetQATSession();
-    bool initialized_;
-    void* sequenceProducerState_;
+    void* getQATSession();
+    bool initialized_{false};
+    void* sequenceProducerState_{nullptr};
   };
   const uint32_t compression_level_;
   const bool enable_checksum_;

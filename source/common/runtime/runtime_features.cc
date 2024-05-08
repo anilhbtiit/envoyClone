@@ -151,6 +151,8 @@ FALSE_RUNTIME_GUARD(envoy_reloadable_features_use_config_in_happy_eyeballs);
 FALSE_RUNTIME_GUARD(envoy_reloadable_features_prefer_quic_client_udp_gro);
 // TODO(martinduke): Delay enabling this guard until all receive_ecn PRs are in place.
 FALSE_RUNTIME_GUARD(envoy_reloadable_features_quic_receive_ecn);
+// TODO(fl0Lec): flip this to true after some test time.
+FALSE_RUNTIME_GUARD(envoy_restart_features_ensure_connection_retry);
 
 // A flag to set the maximum TLS version for google_grpc client to TLS1.2, when needed for
 // compliance restrictions.

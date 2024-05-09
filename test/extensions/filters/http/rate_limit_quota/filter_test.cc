@@ -1,5 +1,3 @@
-#include "source/extensions/filters/http/rate_limit_quota/filter.h"
-
 #include <atomic>
 #include <chrono>
 #include <cstddef>
@@ -7,20 +5,19 @@
 #include <memory>
 #include <string>
 
-#include "gmock/gmock.h"
-#include "gtest/gtest.h"
-#include "absl/container/flat_hash_map.h"
-#include "absl/memory/memory.h"
-#include "absl/status/status.h"
 #include "envoy/extensions/filters/http/rate_limit_quota/v3/rate_limit_quota.pb.h"
+#include "envoy/grpc/async_client_manager.h"
+#include "envoy/http/filter.h"
 #include "envoy/service/rate_limit_quota/v3/rlqs.pb.h"
 #include "envoy/type/v3/ratelimit_strategy.pb.h"
 #include "envoy/type/v3/token_bucket.pb.h"
-#include "envoy/grpc/async_client_manager.h"
-#include "envoy/http/filter.h"
+
+#include "source/common/protobuf/protobuf.h"
 #include "source/common/protobuf/utility.h"
+#include "source/extensions/filters/http/rate_limit_quota/filter.h"
 #include "source/extensions/filters/http/rate_limit_quota/matcher.h"
 #include "source/extensions/filters/http/rate_limit_quota/quota_bucket_cache.h"
+
 #include "test/extensions/filters/http/rate_limit_quota/client_test_utils.h"
 #include "test/extensions/filters/http/rate_limit_quota/test_utils.h"
 #include "test/mocks/event/mocks.h"
@@ -28,7 +25,12 @@
 #include "test/mocks/server/factory_context.h"
 #include "test/test_common/status_utility.h"
 #include "test/test_common/utility.h"
-#include "google/protobuf/text_format.h"
+
+#include "absl/container/flat_hash_map.h"
+#include "absl/memory/memory.h"
+#include "absl/status/status.h"
+#include "gmock/gmock.h"
+#include "gtest/gtest.h"
 #include "xds/type/matcher/v3/cel.pb.h"
 #include "xds/type/matcher/v3/http_inputs.pb.h"
 
@@ -57,7 +59,7 @@ enum class MatcherConfigType {
 };
 
 class FilterTest : public testing::Test {
- public:
+public:
   FilterTest() {
     // Add the grpc service config.
     TestUtility::loadFromYaml(std::string(GoogleGrpcConfig), config_);
@@ -67,31 +69,29 @@ class FilterTest : public testing::Test {
     // Add the matcher configuration.
     xds::type::matcher::v3::Matcher matcher;
     switch (config_type) {
-      case MatcherConfigType::Valid: {
-        TestUtility::loadFromYaml(std::string(ValidMatcherConfig), matcher);
-        break;
-      }
-      case MatcherConfigType::ValidOnNoMatchConfig: {
-        TestUtility::loadFromYaml(std::string(OnNoMatchConfig), matcher);
-        break;
-      }
-      case MatcherConfigType::Invalid: {
-        TestUtility::loadFromYaml(std::string(InvalidMatcherConfig), matcher);
-        break;
-      }
-      case MatcherConfigType::InvalidOnNoMatchConfig: {
-        TestUtility::loadFromYaml(std::string(InvalidOnNoMatcherConfig),
-                                  matcher);
-        break;
-      }
-      case MatcherConfigType::NoMatcher: {
-        TestUtility::loadFromYaml(std::string(OnNoMatchConfigWithNoMatcher),
-                                  matcher);
-        break;
-      }
-      case MatcherConfigType::Empty:
-      default:
-        break;
+    case MatcherConfigType::Valid: {
+      TestUtility::loadFromYaml(std::string(ValidMatcherConfig), matcher);
+      break;
+    }
+    case MatcherConfigType::ValidOnNoMatchConfig: {
+      TestUtility::loadFromYaml(std::string(OnNoMatchConfig), matcher);
+      break;
+    }
+    case MatcherConfigType::Invalid: {
+      TestUtility::loadFromYaml(std::string(InvalidMatcherConfig), matcher);
+      break;
+    }
+    case MatcherConfigType::InvalidOnNoMatchConfig: {
+      TestUtility::loadFromYaml(std::string(InvalidOnNoMatcherConfig), matcher);
+      break;
+    }
+    case MatcherConfigType::NoMatcher: {
+      TestUtility::loadFromYaml(std::string(OnNoMatchConfigWithNoMatcher), matcher);
+      break;
+    }
+    case MatcherConfigType::Empty:
+    default:
+      break;
     }
 
     // Empty matcher config will not have the bucket matcher configured.
@@ -107,8 +107,7 @@ class FilterTest : public testing::Test {
 
     mock_local_client_ = new MockRateLimitClient();
     filter_ = std::make_unique<RateLimitQuotaFilter>(
-        filter_config_, context_, absl::WrapUnique(mock_local_client_),
-        config_with_hash_key);
+        filter_config_, context_, absl::WrapUnique(mock_local_client_), config_with_hash_key);
     if (set_callback) {
       filter_->setDecoderFilterCallbacks(decoder_callbacks_);
     }
@@ -117,8 +116,8 @@ class FilterTest : public testing::Test {
   void constructMismatchedRequestHeader() {
     // Define the wrong input that doesn't match the values in the config: it
     // has `{"env", "staging"}` rather than `{"environment", "staging"}`.
-    absl::flat_hash_map<std::string, std::string> custom_value_pairs = {
-        {"env", "staging"}, {"group", "envoy"}};
+    absl::flat_hash_map<std::string, std::string> custom_value_pairs = {{"env", "staging"},
+                                                                        {"group", "envoy"}};
 
     // Add custom_value_pairs to the request header for exact value_match in the
     // predicate.
@@ -127,8 +126,7 @@ class FilterTest : public testing::Test {
     }
   }
 
-  void buildCustomHeader(
-      const absl::flat_hash_map<std::string, std::string>& custom_value_pairs) {
+  void buildCustomHeader(const absl::flat_hash_map<std::string, std::string>& custom_value_pairs) {
     // Add custom_value_pairs to the request header for exact value_match in the
     // predicate.
     for (auto const& pair : custom_value_pairs) {
@@ -137,8 +135,7 @@ class FilterTest : public testing::Test {
   }
 
   void verifyRequestMatchingSucceeded(
-      const absl::flat_hash_map<std::string, std::string>&
-          expected_bucket_ids) {
+      const absl::flat_hash_map<std::string, std::string>& expected_bucket_ids) {
     // Perform request matching.
     auto match_result = filter_->requestMatching(default_headers_);
     // Asserts that the request matching succeeded.
@@ -151,18 +148,17 @@ class FilterTest : public testing::Test {
 
     RateLimitQuotaValidationVisitor visitor = {};
     // Generate the bucket ids.
-    auto ret = match_action->generateBucketId(filter_->matchingData(), context_,
-                                              visitor);
+    auto ret = match_action->generateBucketId(filter_->matchingData(), context_, visitor);
     // Asserts that the bucket id generation succeeded and then retrieve the
     // bucket ids.
     ASSERT_TRUE(ret.ok());
     auto bucket_ids = ret.value().bucket();
-    auto serialized_bucket_ids = absl::flat_hash_map<std::string, std::string>(
-        bucket_ids.begin(), bucket_ids.end());
+    auto serialized_bucket_ids =
+        absl::flat_hash_map<std::string, std::string>(bucket_ids.begin(), bucket_ids.end());
     // Verifies that the expected bucket ids are generated for `on_no_match`
     // case.
-    EXPECT_THAT(expected_bucket_ids, testing::UnorderedPointwise(
-                                         testing::Eq(), serialized_bucket_ids));
+    EXPECT_THAT(expected_bucket_ids,
+                testing::UnorderedPointwise(testing::Eq(), serialized_bucket_ids));
   }
 
   NiceMock<Event::MockDispatcher> dispatcher_;
@@ -173,10 +169,8 @@ class FilterTest : public testing::Test {
   FilterConfigConstSharedPtr filter_config_;
   FilterConfig config_;
   std::unique_ptr<RateLimitQuotaFilter> filter_;
-  Http::TestRequestHeaderMapImpl default_headers_{{":method", "GET"},
-                                                  {":path", "/"},
-                                                  {":scheme", "http"},
-                                                  {":authority", "host"}};
+  Http::TestRequestHeaderMapImpl default_headers_{
+      {":method", "GET"}, {":path", "/"}, {":scheme", "http"}, {":authority", "host"}};
 };
 
 TEST_F(FilterTest, EmptyMatcherConfig) {
@@ -185,8 +179,7 @@ TEST_F(FilterTest, EmptyMatcherConfig) {
   auto match_result = filter_->requestMatching(default_headers_);
   EXPECT_FALSE(match_result.ok());
   EXPECT_THAT(match_result, StatusIs(absl::StatusCode::kInternal));
-  EXPECT_EQ(match_result.status().message(),
-            "Matcher tree has not been initialized yet.");
+  EXPECT_EQ(match_result.status().message(), "Matcher tree has not been initialized yet.");
 }
 
 TEST_F(FilterTest, RequestMatchingSucceeded) {
@@ -194,15 +187,14 @@ TEST_F(FilterTest, RequestMatchingSucceeded) {
   createFilter();
   // Define the key value pairs that is used to build the bucket_id dynamically
   // via `custom_value` in the config.
-  absl::flat_hash_map<std::string, std::string> custom_value_pairs = {
-      {"environment", "staging"}, {"group", "envoy"}};
+  absl::flat_hash_map<std::string, std::string> custom_value_pairs = {{"environment", "staging"},
+                                                                      {"group", "envoy"}};
 
   buildCustomHeader(custom_value_pairs);
 
   // The expected bucket ids has one additional pair that is built statically
   // via `string_value` from the config.
-  absl::flat_hash_map<std::string, std::string> expected_bucket_ids =
-      custom_value_pairs;
+  absl::flat_hash_map<std::string, std::string> expected_bucket_ids = custom_value_pairs;
   expected_bucket_ids.insert({"name", "prod"});
   verifyRequestMatchingSucceeded(expected_bucket_ids);
 }
@@ -218,8 +210,7 @@ TEST_F(FilterTest, RequestMatchingFailed) {
   // mismatched inputs.
   EXPECT_FALSE(match.ok());
   EXPECT_THAT(match, StatusIs(absl::StatusCode::kNotFound));
-  EXPECT_EQ(match.status().message(),
-            "Matching completed but no match result was found.");
+  EXPECT_EQ(match.status().message(), "Matching completed but no match result was found.");
 }
 
 TEST_F(FilterTest, RequestMatchingFailedWithEmptyHeader) {
@@ -242,16 +233,14 @@ TEST_F(FilterTest, RequestMatchingFailedWithNoCallback) {
   auto match = filter_->requestMatching(default_headers_);
   EXPECT_FALSE(match.ok());
   EXPECT_THAT(match, StatusIs(absl::StatusCode::kInternal));
-  EXPECT_EQ(match.status().message(),
-            "Filter callback has not been initialized successfully yet.");
+  EXPECT_EQ(match.status().message(), "Filter callback has not been initialized successfully yet.");
 }
 
 TEST_F(FilterTest, RequestMatchingWithOnNoMatch) {
   addMatcherConfig(MatcherConfigType::ValidOnNoMatchConfig);
   createFilter();
   absl::flat_hash_map<std::string, std::string> expected_bucket_ids = {
-      {"on_no_match_name", "on_no_match_value"},
-      {"on_no_match_name_2", "on_no_match_value_2"}};
+      {"on_no_match_name", "on_no_match_value"}, {"on_no_match_name_2", "on_no_match_value_2"}};
   verifyRequestMatchingSucceeded(expected_bucket_ids);
 }
 
@@ -259,8 +248,7 @@ TEST_F(FilterTest, RequestMatchingOnNoMatchWithNoMatcher) {
   addMatcherConfig(MatcherConfigType::NoMatcher);
   createFilter();
   absl::flat_hash_map<std::string, std::string> expected_bucket_ids = {
-      {"on_no_match_name", "on_no_match_value"},
-      {"on_no_match_name_2", "on_no_match_value_2"}};
+      {"on_no_match_name", "on_no_match_value"}, {"on_no_match_name_2", "on_no_match_value_2"}};
   verifyRequestMatchingSucceeded(expected_bucket_ids);
 }
 
@@ -280,13 +268,11 @@ TEST_F(FilterTest, RequestMatchingWithInvalidOnNoMatch) {
 
   RateLimitQuotaValidationVisitor visitor = {};
   // Generate the bucket ids.
-  auto ret = match_action->generateBucketId(filter_->matchingData(), context_,
-                                            visitor);
+  auto ret = match_action->generateBucketId(filter_->matchingData(), context_, visitor);
   // Bucket id generation is expected to fail, which is due to no support for
   // dynamic id generation (i.e., via custom_value with for on_no_match case.
   EXPECT_FALSE(ret.ok());
-  EXPECT_EQ(ret.status().message(),
-            "Failed to generate the id from custom value config.");
+  EXPECT_EQ(ret.status().message(), "Failed to generate the id from custom value config.");
 }
 
 TEST_F(FilterTest, DecodeHeaderWithInValidConfig) {
@@ -295,19 +281,17 @@ TEST_F(FilterTest, DecodeHeaderWithInValidConfig) {
 
   // Define the key value pairs that is used to build the bucket_id dynamically
   // via `custom_value` in the config.
-  absl::flat_hash_map<std::string, std::string> custom_value_pairs = {
-      {"environment", "staging"}, {"group", "envoy"}};
+  absl::flat_hash_map<std::string, std::string> custom_value_pairs = {{"environment", "staging"},
+                                                                      {"group", "envoy"}};
   buildCustomHeader(custom_value_pairs);
-  Http::FilterHeadersStatus status =
-      filter_->decodeHeaders(default_headers_, false);
+  Http::FilterHeadersStatus status = filter_->decodeHeaders(default_headers_, false);
   EXPECT_EQ(status, Envoy::Http::FilterHeadersStatus::Continue);
 }
 
 TEST_F(FilterTest, DecodeHeaderWithEmptyConfig) {
   addMatcherConfig(MatcherConfigType::Empty);
   createFilter();
-  Http::FilterHeadersStatus status =
-      filter_->decodeHeaders(default_headers_, false);
+  Http::FilterHeadersStatus status = filter_->decodeHeaders(default_headers_, false);
   EXPECT_EQ(status, Envoy::Http::FilterHeadersStatus::Continue);
 }
 
@@ -316,8 +300,7 @@ TEST_F(FilterTest, DecodeHeaderWithMismatchHeader) {
   createFilter();
   constructMismatchedRequestHeader();
 
-  Http::FilterHeadersStatus status =
-      filter_->decodeHeaders(default_headers_, false);
+  Http::FilterHeadersStatus status = filter_->decodeHeaders(default_headers_, false);
   EXPECT_EQ(status, Envoy::Http::FilterHeadersStatus::Continue);
 }
 
@@ -360,19 +343,15 @@ TEST_F(FilterTest, RequestMatchingSucceededWithCelMatcher) {
   Protobuf::TextFormat::ParseFromString(cel_expr_str, &checked_expr);
 
   xds::type::matcher::v3::CelMatcher cel_matcher;
-  cel_matcher.mutable_expr_match()->mutable_checked_expr()->MergeFrom(
-      checked_expr);
+  cel_matcher.mutable_expr_match()->mutable_checked_expr()->MergeFrom(checked_expr);
   xds::type::matcher::v3::Matcher matcher;
 
   auto* inner_matcher = matcher.mutable_matcher_list()->add_matchers();
-  auto* single_predicate =
-      inner_matcher->mutable_predicate()->mutable_single_predicate();
+  auto* single_predicate = inner_matcher->mutable_predicate()->mutable_single_predicate();
 
   xds::type::matcher::v3::HttpAttributesCelMatchInput cel_match_input;
-  single_predicate->mutable_input()->set_name(
-      "envoy.matching.inputs.cel_data_input");
-  single_predicate->mutable_input()->mutable_typed_config()->PackFrom(
-      cel_match_input);
+  single_predicate->mutable_input()->set_name("envoy.matching.inputs.cel_data_input");
+  single_predicate->mutable_input()->mutable_typed_config()->PackFrom(cel_match_input);
 
   auto* custom_matcher = single_predicate->mutable_custom_match();
   custom_matcher->mutable_typed_config()->PackFrom(cel_matcher);
@@ -422,14 +401,12 @@ TEST_F(FilterTest, RequestMatchingSucceededWithCelMatcher) {
 
   // The expected bucket ids has one additional pair that is built statically
   // via `string_value` from the config.
-  absl::flat_hash_map<std::string, std::string> expected_bucket_ids =
-      custom_value_pairs;
+  absl::flat_hash_map<std::string, std::string> expected_bucket_ids = custom_value_pairs;
   expected_bucket_ids.insert({"name", "prod"});
   verifyRequestMatchingSucceeded(expected_bucket_ids);
 }
 
-BucketId bucketIdFromMap(
-    const absl::flat_hash_map<std::string, std::string>& bucket_ids_map) {
+BucketId bucketIdFromMap(const absl::flat_hash_map<std::string, std::string>& bucket_ids_map) {
   BucketId bucket_id;
   for (const auto& [k, v] : bucket_ids_map) {
     bucket_id.mutable_bucket()->insert({k, v});
@@ -442,12 +419,11 @@ TEST_F(FilterTest, DecodeHeadersWithoutCachedAssignment) {
   createFilter();
   // Define the key value pairs that is used to build the bucket_id dynamically
   // via `custom_value` in the config.
-  absl::flat_hash_map<std::string, std::string> custom_value_pairs = {
-      {"environment", "staging"}, {"group", "envoy"}};
+  absl::flat_hash_map<std::string, std::string> custom_value_pairs = {{"environment", "staging"},
+                                                                      {"group", "envoy"}};
   buildCustomHeader(custom_value_pairs);
 
-  absl::flat_hash_map<std::string, std::string> expected_bucket_ids =
-      custom_value_pairs;
+  absl::flat_hash_map<std::string, std::string> expected_bucket_ids = custom_value_pairs;
   expected_bucket_ids.insert({"name", "prod"});
   verifyRequestMatchingSucceeded(expected_bucket_ids);
 
@@ -464,15 +440,12 @@ TEST_F(FilterTest, DecodeHeadersWithoutCachedAssignment) {
       ->set_blanket_rule(RateLimitStrategy::ALLOW_ALL);
   *expected_action.mutable_bucket_id() = bucket_id;
 
-  EXPECT_CALL(*mock_local_client_, getBucket(bucket_id_hash))
-      .WillOnce(Return(nullptr));
-  EXPECT_CALL(*mock_local_client_,
-              createBucket(ProtoEqIgnoreRepeatedFieldOrdering(bucket_id),
-                           bucket_id_hash, ProtoEq(expected_action), true))
+  EXPECT_CALL(*mock_local_client_, getBucket(bucket_id_hash)).WillOnce(Return(nullptr));
+  EXPECT_CALL(*mock_local_client_, createBucket(ProtoEqIgnoreRepeatedFieldOrdering(bucket_id),
+                                                bucket_id_hash, ProtoEq(expected_action), true))
       .WillOnce(Return());
 
-  Http::FilterHeadersStatus status =
-      filter_->decodeHeaders(default_headers_, false);
+  Http::FilterHeadersStatus status = filter_->decodeHeaders(default_headers_, false);
   EXPECT_EQ(status, Envoy::Http::FilterHeadersStatus::Continue);
 }
 
@@ -481,12 +454,11 @@ TEST_F(FilterTest, DecodeHeaderWithCachedAllow) {
   createFilter();
   // Define the key value pairs that is used to build the bucket_id dynamically
   // via `custom_value` in the config.
-  absl::flat_hash_map<std::string, std::string> custom_value_pairs = {
-      {"environment", "staging"}, {"group", "envoy"}};
+  absl::flat_hash_map<std::string, std::string> custom_value_pairs = {{"environment", "staging"},
+                                                                      {"group", "envoy"}};
   buildCustomHeader(custom_value_pairs);
 
-  absl::flat_hash_map<std::string, std::string> expected_bucket_ids =
-      custom_value_pairs;
+  absl::flat_hash_map<std::string, std::string> expected_bucket_ids = custom_value_pairs;
   expected_bucket_ids.insert({"name", "prod"});
   verifyRequestMatchingSucceeded(expected_bucket_ids);
 
@@ -495,26 +467,17 @@ TEST_F(FilterTest, DecodeHeaderWithCachedAllow) {
   BucketId bucket_id = bucketIdFromMap(expected_bucket_ids);
   size_t bucket_id_hash = MessageUtil::hash(bucket_id);
   RateLimitQuotaResponse::BucketAction action;
-  action.mutable_quota_assignment_action()
-      ->mutable_rate_limit_strategy()
-      ->set_blanket_rule(RateLimitStrategy::ALLOW_ALL);
+  action.mutable_quota_assignment_action()->mutable_rate_limit_strategy()->set_blanket_rule(
+      RateLimitStrategy::ALLOW_ALL);
   std::shared_ptr<CachedBucket> bucket = std::make_shared<CachedBucket>(
-      bucket_id,
-      std::make_shared<QuotaUsage>(1, 0, std::chrono::nanoseconds(0)), action,
-      nullptr);
+      bucket_id, std::make_shared<QuotaUsage>(1, 0, std::chrono::nanoseconds(0)), action, nullptr);
 
-  EXPECT_CALL(*mock_local_client_, getBucket(bucket_id_hash))
-      .WillOnce(Return(bucket));
+  EXPECT_CALL(*mock_local_client_, getBucket(bucket_id_hash)).WillOnce(Return(bucket));
 
-  Http::FilterHeadersStatus status =
-      filter_->decodeHeaders(default_headers_, false);
+  Http::FilterHeadersStatus status = filter_->decodeHeaders(default_headers_, false);
   EXPECT_EQ(status, Envoy::Http::FilterHeadersStatus::Continue);
-  EXPECT_EQ(
-      bucket->quota_usage->num_requests_allowed.load(std::memory_order_relaxed),
-      2);
-  EXPECT_EQ(
-      bucket->quota_usage->num_requests_denied.load(std::memory_order_relaxed),
-      0);
+  EXPECT_EQ(bucket->quota_usage->num_requests_allowed.load(std::memory_order_relaxed), 2);
+  EXPECT_EQ(bucket->quota_usage->num_requests_denied.load(std::memory_order_relaxed), 0);
 }
 
 TEST_F(FilterTest, DecodeHeaderWithCachedDeny) {
@@ -522,12 +485,11 @@ TEST_F(FilterTest, DecodeHeaderWithCachedDeny) {
   createFilter();
   // Define the key value pairs that is used to build the bucket_id dynamically
   // via `custom_value` in the config.
-  absl::flat_hash_map<std::string, std::string> custom_value_pairs = {
-      {"environment", "staging"}, {"group", "envoy"}};
+  absl::flat_hash_map<std::string, std::string> custom_value_pairs = {{"environment", "staging"},
+                                                                      {"group", "envoy"}};
   buildCustomHeader(custom_value_pairs);
 
-  absl::flat_hash_map<std::string, std::string> expected_bucket_ids =
-      custom_value_pairs;
+  absl::flat_hash_map<std::string, std::string> expected_bucket_ids = custom_value_pairs;
   expected_bucket_ids.insert({"name", "prod"});
   verifyRequestMatchingSucceeded(expected_bucket_ids);
 
@@ -536,26 +498,17 @@ TEST_F(FilterTest, DecodeHeaderWithCachedDeny) {
   BucketId bucket_id = bucketIdFromMap(expected_bucket_ids);
   size_t bucket_id_hash = MessageUtil::hash(bucket_id);
   RateLimitQuotaResponse::BucketAction action;
-  action.mutable_quota_assignment_action()
-      ->mutable_rate_limit_strategy()
-      ->set_blanket_rule(RateLimitStrategy::DENY_ALL);
+  action.mutable_quota_assignment_action()->mutable_rate_limit_strategy()->set_blanket_rule(
+      RateLimitStrategy::DENY_ALL);
   std::shared_ptr<CachedBucket> bucket = std::make_shared<CachedBucket>(
-      bucket_id,
-      std::make_shared<QuotaUsage>(1, 0, std::chrono::nanoseconds(0)), action,
-      nullptr);
+      bucket_id, std::make_shared<QuotaUsage>(1, 0, std::chrono::nanoseconds(0)), action, nullptr);
 
-  EXPECT_CALL(*mock_local_client_, getBucket(bucket_id_hash))
-      .WillOnce(Return(bucket));
+  EXPECT_CALL(*mock_local_client_, getBucket(bucket_id_hash)).WillOnce(Return(bucket));
 
-  Http::FilterHeadersStatus status =
-      filter_->decodeHeaders(default_headers_, false);
+  Http::FilterHeadersStatus status = filter_->decodeHeaders(default_headers_, false);
   EXPECT_EQ(status, Envoy::Http::FilterHeadersStatus::StopIteration);
-  EXPECT_EQ(
-      bucket->quota_usage->num_requests_allowed.load(std::memory_order_relaxed),
-      1);
-  EXPECT_EQ(
-      bucket->quota_usage->num_requests_denied.load(std::memory_order_relaxed),
-      1);
+  EXPECT_EQ(bucket->quota_usage->num_requests_allowed.load(std::memory_order_relaxed), 1);
+  EXPECT_EQ(bucket->quota_usage->num_requests_denied.load(std::memory_order_relaxed), 1);
 }
 
 TEST_F(FilterTest, DecodeHeaderWithTokenBucketAllow) {
@@ -563,12 +516,11 @@ TEST_F(FilterTest, DecodeHeaderWithTokenBucketAllow) {
   createFilter();
   // Define the key value pairs that is used to build the bucket_id dynamically
   // via `custom_value` in the config.
-  absl::flat_hash_map<std::string, std::string> custom_value_pairs = {
-      {"environment", "staging"}, {"group", "envoy"}};
+  absl::flat_hash_map<std::string, std::string> custom_value_pairs = {{"environment", "staging"},
+                                                                      {"group", "envoy"}};
   buildCustomHeader(custom_value_pairs);
 
-  absl::flat_hash_map<std::string, std::string> expected_bucket_ids =
-      custom_value_pairs;
+  absl::flat_hash_map<std::string, std::string> expected_bucket_ids = custom_value_pairs;
   expected_bucket_ids.insert({"name", "prod"});
   verifyRequestMatchingSucceeded(expected_bucket_ids);
 
@@ -584,26 +536,17 @@ TEST_F(FilterTest, DecodeHeaderWithTokenBucketAllow) {
   token_bucket->mutable_tokens_per_fill()->set_value(200);
   token_bucket->mutable_fill_interval()->set_seconds(60);
 
-  std::shared_ptr<MockTokenBucket> mock_tb =
-      std::make_shared<MockTokenBucket>();
+  std::shared_ptr<MockTokenBucket> mock_tb = std::make_shared<MockTokenBucket>();
   std::shared_ptr<CachedBucket> bucket = std::make_shared<CachedBucket>(
-      bucket_id,
-      std::make_shared<QuotaUsage>(1, 0, std::chrono::nanoseconds(0)), action,
-      mock_tb);
+      bucket_id, std::make_shared<QuotaUsage>(1, 0, std::chrono::nanoseconds(0)), action, mock_tb);
 
-  EXPECT_CALL(*mock_local_client_, getBucket(bucket_id_hash))
-      .WillOnce(Return(bucket));
+  EXPECT_CALL(*mock_local_client_, getBucket(bucket_id_hash)).WillOnce(Return(bucket));
   EXPECT_CALL(*mock_tb, consume(1, _)).WillOnce(Return(1));
 
-  Http::FilterHeadersStatus status =
-      filter_->decodeHeaders(default_headers_, false);
+  Http::FilterHeadersStatus status = filter_->decodeHeaders(default_headers_, false);
   EXPECT_EQ(status, Envoy::Http::FilterHeadersStatus::Continue);
-  EXPECT_EQ(
-      bucket->quota_usage->num_requests_allowed.load(std::memory_order_relaxed),
-      2);
-  EXPECT_EQ(
-      bucket->quota_usage->num_requests_denied.load(std::memory_order_relaxed),
-      0);
+  EXPECT_EQ(bucket->quota_usage->num_requests_allowed.load(std::memory_order_relaxed), 2);
+  EXPECT_EQ(bucket->quota_usage->num_requests_denied.load(std::memory_order_relaxed), 0);
 }
 
 TEST_F(FilterTest, DecodeHeaderWithTokenBucketDeny) {
@@ -611,12 +554,11 @@ TEST_F(FilterTest, DecodeHeaderWithTokenBucketDeny) {
   createFilter();
   // Define the key value pairs that is used to build the bucket_id dynamically
   // via `custom_value` in the config.
-  absl::flat_hash_map<std::string, std::string> custom_value_pairs = {
-      {"environment", "staging"}, {"group", "envoy"}};
+  absl::flat_hash_map<std::string, std::string> custom_value_pairs = {{"environment", "staging"},
+                                                                      {"group", "envoy"}};
   buildCustomHeader(custom_value_pairs);
 
-  absl::flat_hash_map<std::string, std::string> expected_bucket_ids =
-      custom_value_pairs;
+  absl::flat_hash_map<std::string, std::string> expected_bucket_ids = custom_value_pairs;
   expected_bucket_ids.insert({"name", "prod"});
   verifyRequestMatchingSucceeded(expected_bucket_ids);
 
@@ -632,26 +574,17 @@ TEST_F(FilterTest, DecodeHeaderWithTokenBucketDeny) {
   token_bucket->mutable_tokens_per_fill()->set_value(200);
   token_bucket->mutable_fill_interval()->set_seconds(60);
 
-  std::shared_ptr<MockTokenBucket> mock_tb =
-      std::make_shared<MockTokenBucket>();
+  std::shared_ptr<MockTokenBucket> mock_tb = std::make_shared<MockTokenBucket>();
   std::shared_ptr<CachedBucket> bucket = std::make_shared<CachedBucket>(
-      bucket_id,
-      std::make_shared<QuotaUsage>(1, 0, std::chrono::nanoseconds(0)), action,
-      mock_tb);
+      bucket_id, std::make_shared<QuotaUsage>(1, 0, std::chrono::nanoseconds(0)), action, mock_tb);
 
-  EXPECT_CALL(*mock_local_client_, getBucket(bucket_id_hash))
-      .WillOnce(Return(bucket));
+  EXPECT_CALL(*mock_local_client_, getBucket(bucket_id_hash)).WillOnce(Return(bucket));
   EXPECT_CALL(*mock_tb, consume(1, _)).WillOnce(Return(0));
 
-  Http::FilterHeadersStatus status =
-      filter_->decodeHeaders(default_headers_, false);
+  Http::FilterHeadersStatus status = filter_->decodeHeaders(default_headers_, false);
   EXPECT_EQ(status, Envoy::Http::FilterHeadersStatus::StopIteration);
-  EXPECT_EQ(
-      bucket->quota_usage->num_requests_allowed.load(std::memory_order_relaxed),
-      1);
-  EXPECT_EQ(
-      bucket->quota_usage->num_requests_denied.load(std::memory_order_relaxed),
-      1);
+  EXPECT_EQ(bucket->quota_usage->num_requests_allowed.load(std::memory_order_relaxed), 1);
+  EXPECT_EQ(bucket->quota_usage->num_requests_denied.load(std::memory_order_relaxed), 1);
 }
 
 // If a TokenBucket action is assigned but no token bucket is actually cached,
@@ -661,12 +594,11 @@ TEST_F(FilterTest, DecodeHeaderWithMissingTokenBucket) {
   createFilter();
   // Define the key value pairs that is used to build the bucket_id dynamically
   // via `custom_value` in the config.
-  absl::flat_hash_map<std::string, std::string> custom_value_pairs = {
-      {"environment", "staging"}, {"group", "envoy"}};
+  absl::flat_hash_map<std::string, std::string> custom_value_pairs = {{"environment", "staging"},
+                                                                      {"group", "envoy"}};
   buildCustomHeader(custom_value_pairs);
 
-  absl::flat_hash_map<std::string, std::string> expected_bucket_ids =
-      custom_value_pairs;
+  absl::flat_hash_map<std::string, std::string> expected_bucket_ids = custom_value_pairs;
   expected_bucket_ids.insert({"name", "prod"});
   verifyRequestMatchingSucceeded(expected_bucket_ids);
 
@@ -683,20 +615,16 @@ TEST_F(FilterTest, DecodeHeaderWithMissingTokenBucket) {
   token_bucket->mutable_fill_interval()->set_seconds(60);
 
   std::shared_ptr<CachedBucket> bucket = std::make_shared<CachedBucket>(
-      bucket_id,
-      std::make_shared<QuotaUsage>(1, 0, std::chrono::nanoseconds(0)), action,
-      nullptr);
+      bucket_id, std::make_shared<QuotaUsage>(1, 0, std::chrono::nanoseconds(0)), action, nullptr);
 
-  EXPECT_CALL(*mock_local_client_, getBucket(bucket_id_hash))
-      .WillOnce(Return(bucket));
+  EXPECT_CALL(*mock_local_client_, getBucket(bucket_id_hash)).WillOnce(Return(bucket));
 
-  Http::FilterHeadersStatus status =
-      filter_->decodeHeaders(default_headers_, false);
+  Http::FilterHeadersStatus status = filter_->decodeHeaders(default_headers_, false);
   EXPECT_EQ(status, Envoy::Http::FilterHeadersStatus::Continue);
 }
 
-}  // namespace
-}  // namespace RateLimitQuota
-}  // namespace HttpFilters
-}  // namespace Extensions
-}  // namespace Envoy
+} // namespace
+} // namespace RateLimitQuota
+} // namespace HttpFilters
+} // namespace Extensions
+} // namespace Envoy

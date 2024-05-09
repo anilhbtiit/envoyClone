@@ -8,7 +8,7 @@ load(
     "envoy_extension_cc_test_library",
 )
 
-licenses(["notice"])
+licenses(["notice"])  # Apache 2
 
 envoy_package()
 
@@ -20,12 +20,10 @@ envoy_extension_cc_test(
     tags = ["skip_on_windows"],
     deps = [
         ":client_test_utils",
-        "@envoy_api//envoy/extensions/filters/http/rate_limit_quota/v3:pkg_cc_proto",
-        "@envoy_api//envoy/service/rate_limit_quota/v3:pkg_cc_proto",
-        "@envoy_api//envoy/type/v3:pkg_cc_proto",
         "//source/common/http:message_lib",
         "//source/extensions/filters/http/rate_limit_quota:config",
         "//test/mocks/server:factory_context_mocks",
+        "@envoy_api//envoy/extensions/filters/http/rate_limit_quota/v3:pkg_cc_proto",
     ],
 )
 
@@ -38,8 +36,6 @@ envoy_extension_cc_test(
     deps = [
         ":client_test_utils",
         ":test_utils",
-        "@envoy_api//envoy/extensions/filters/http/rate_limit_quota/v3:pkg_cc_proto",
-        "@envoy_api//envoy/service/rate_limit_quota/v3:pkg_cc_proto",
         "//source/common/http:message_lib",
         "//source/extensions/filters/http/rate_limit_quota",
         "//test/common/http:common_lib",
@@ -48,6 +44,9 @@ envoy_extension_cc_test(
         "//test/mocks/server:server_mocks",
         "//test/test_common:status_utility_lib",
         "//test/test_common:test_runtime_lib",
+        "@envoy_api//envoy/extensions/filters/http/rate_limit_quota/v3:pkg_cc_proto",
+        "@envoy_api//envoy/service/rate_limit_quota/v3:pkg_cc_proto",
+        "@envoy_api//envoy/type/v3:pkg_cc_proto",
     ],
 )
 
@@ -57,9 +56,6 @@ envoy_extension_cc_test_library(
     extension_names = ["envoy.filters.http.rate_limit_quota"],
     tags = ["skip_on_windows"],
     deps = [
-        "@envoy_api//envoy/config/core/v3:pkg_cc_proto",
-        "@envoy_api//envoy/extensions/filters/http/rate_limit_quota/v3:pkg_cc_proto",
-        "@envoy_api//envoy/service/rate_limit_quota/v3:pkg_cc_proto",
         "//source/common/http:header_map_lib",
         "//source/extensions/filters/http/rate_limit_quota:client_lib",
         "//test/mocks/grpc:grpc_mocks",
@@ -67,6 +63,8 @@ envoy_extension_cc_test_library(
         "//test/mocks/server:server_mocks",
         "//test/test_common:status_utility_lib",
         "//test/test_common:test_runtime_lib",
+        "@envoy_api//envoy/config/core/v3:pkg_cc_proto",
+        "@envoy_api//envoy/service/rate_limit_quota/v3:pkg_cc_proto",
     ],
 )
 
@@ -89,8 +87,6 @@ envoy_extension_cc_test(
     ],
     deps = [
         ":test_utils",
-        "@envoy_api//envoy/extensions/filters/http/rate_limit_quota/v3:pkg_cc_proto",
-        "@envoy_api//envoy/service/rate_limit_quota/v3:pkg_cc_proto",
         "//source/common/http:message_lib",
         "//source/extensions/filters/http/rate_limit_quota",
         "//source/extensions/filters/http/rate_limit_quota:config",
@@ -100,6 +96,9 @@ envoy_extension_cc_test(
         "//test/test_common:status_utility_lib",
         "//test/test_common:test_runtime_lib",
         "//test/test_common:utility_lib",
+        "@envoy_api//envoy/extensions/filters/http/rate_limit_quota/v3:pkg_cc_proto",
+        "@envoy_api//envoy/service/rate_limit_quota/v3:pkg_cc_proto",
+        "@envoy_api//envoy/type/v3:pkg_cc_proto",
     ],
 )
 
@@ -115,8 +114,6 @@ envoy_extension_cc_test(
     ],
     deps = [
         ":client_test_utils",
-        "@envoy_api//envoy/extensions/filters/http/rate_limit_quota/v3:pkg_cc_proto",
-        "@envoy_api//envoy/service/rate_limit_quota/v3:pkg_cc_proto",
         "//source/common/http:message_lib",
         "//source/extensions/filters/http/rate_limit_quota",
         "//source/extensions/filters/http/rate_limit_quota:config",
@@ -125,5 +122,7 @@ envoy_extension_cc_test(
         "//test/test_common:status_utility_lib",
         "//test/test_common:test_runtime_lib",
         "//test/test_common:utility_lib",
+        "@envoy_api//envoy/service/rate_limit_quota/v3:pkg_cc_proto",
+        "@envoy_api//envoy/type/v3:pkg_cc_proto",
     ],
 )

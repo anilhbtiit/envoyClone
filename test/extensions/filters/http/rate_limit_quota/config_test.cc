@@ -1,15 +1,17 @@
-#include "source/extensions/filters/http/rate_limit_quota/config.h"
-
 #include <memory>
 #include <string>
 
-#include "gmock/gmock.h"
-#include "gtest/gtest.h"
 #include "envoy/extensions/filters/http/rate_limit_quota/v3/rate_limit_quota.pb.h"
 #include "envoy/http/filter_factory.h"
+
+#include "source/extensions/filters/http/rate_limit_quota/config.h"
+
 #include "test/extensions/filters/http/rate_limit_quota/client_test_utils.h"
 #include "test/mocks/http/mocks.h"
 #include "test/test_common/utility.h"
+
+#include "gmock/gmock.h"
+#include "gtest/gtest.h"
 
 namespace Envoy {
 namespace Extensions {
@@ -46,8 +48,7 @@ TEST(RateLimitQuotaFilterConfigTest, RateLimitQuotaFilterWithCorrectProto) {
                       string_value: "prod"
               reporting_interval: 60s
   )EOF";
-  envoy::extensions::filters::http::rate_limit_quota::v3::
-      RateLimitQuotaFilterConfig filter_config;
+  envoy::extensions::filters::http::rate_limit_quota::v3::RateLimitQuotaFilterConfig filter_config;
   TestUtility::loadFromYaml(filter_config_yaml, filter_config);
 
   Http::MockFilterChainFactoryCallbacks filter_callback;
@@ -64,8 +65,8 @@ TEST(RateLimitQuotaFilterConfigTest, RateLimitQuotaFilterWithCorrectProto) {
   cb(filter_callback);
 }
 
-}  // namespace
-}  // namespace RateLimitQuota
-}  // namespace HttpFilters
-}  // namespace Extensions
-}  // namespace Envoy
+} // namespace
+} // namespace RateLimitQuota
+} // namespace HttpFilters
+} // namespace Extensions
+} // namespace Envoy

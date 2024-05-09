@@ -5,9 +5,6 @@
 #include <string>
 #include <utility>
 
-#include "absl/status/statusor.h"
-#include "absl/strings/string_view.h"
-#include "envoy/service/rate_limit_quota/v3/rlqs.pb.h"
 #include "envoy/common/time.h"
 #include "envoy/event/dispatcher.h"
 #include "envoy/event/timer.h"
@@ -15,11 +12,16 @@
 #include "envoy/grpc/status.h"
 #include "envoy/http/header_map.h"
 #include "envoy/server/factory_context.h"
+#include "envoy/service/rate_limit_quota/v3/rlqs.pb.h"
 #include "envoy/thread_local/thread_local.h"
 #include "envoy/thread_local/thread_local_object.h"
+
 #include "source/common/common/logger.h"
 #include "source/common/grpc/typed_async_client.h"
 #include "source/extensions/filters/http/rate_limit_quota/quota_bucket_cache.h"
+
+#include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 
 namespace Envoy {
 namespace Extensions {
@@ -29,40 +31,39 @@ namespace RateLimitQuota {
 using ::envoy::service::rate_limit_quota::v3::BucketId;
 using ::envoy::service::rate_limit_quota::v3::RateLimitQuotaResponse;
 using ::envoy::service::rate_limit_quota::v3::RateLimitQuotaUsageReports;
-using BucketQuotaUsage = ::envoy::service::rate_limit_quota::v3::
-    RateLimitQuotaUsageReports::BucketQuotaUsage;
-using GrpcAsyncClient = Grpc::AsyncClient<
-    envoy::service::rate_limit_quota::v3::RateLimitQuotaUsageReports,
-    envoy::service::rate_limit_quota::v3::RateLimitQuotaResponse>;
-using RateLimitQuotaResponsePtr = std::unique_ptr<
-    envoy::service::rate_limit_quota::v3::RateLimitQuotaResponse>;
+using BucketQuotaUsage =
+    ::envoy::service::rate_limit_quota::v3::RateLimitQuotaUsageReports::BucketQuotaUsage;
+using GrpcAsyncClient =
+    Grpc::AsyncClient<envoy::service::rate_limit_quota::v3::RateLimitQuotaUsageReports,
+                      envoy::service::rate_limit_quota::v3::RateLimitQuotaResponse>;
+using RateLimitQuotaResponsePtr =
+    std::unique_ptr<envoy::service::rate_limit_quota::v3::RateLimitQuotaResponse>;
 
 // Callbacks to trigger when the main thread finishes executing a queued
 // operation. Primarily used for testing.
 class GlobalRateLimitClientCallbacks {
- public:
+public:
   virtual ~GlobalRateLimitClientCallbacks() = default;
-  virtual void onBucketCreated([[maybe_unused]] const BucketId& bucket_id, [[maybe_unused]] size_t id) {};
+  virtual void onBucketCreated([[maybe_unused]] const BucketId& bucket_id,
+                               [[maybe_unused]] size_t id){};
   // Called on success or failure to send the actual message.
-  virtual void onUsageReportsSent() {};
-  virtual void onQuotaResponseProcessed() {};
+  virtual void onUsageReportsSent(){};
+  virtual void onQuotaResponseProcessed(){};
 };
 
 // Grpc bidirectional streaming client which handles the communication with
 // RLQS server. A pointer to it should go into TLS as it should be referenced by
 // worker threads' local RateLimitClients.
-class GlobalRateLimitClientImpl
-    : public Grpc::AsyncStreamCallbacks<
-          envoy::service::rate_limit_quota::v3::RateLimitQuotaResponse>,
-      public Logger::Loggable<Logger::Id::rate_limit_quota> {
- public:
-  GlobalRateLimitClientImpl(
-      const Grpc::GrpcServiceConfigWithHashKey& config_with_hash_key,
-      Server::Configuration::FactoryContext& context,
-      absl::string_view domain_name,
-      std::chrono::milliseconds send_reports_interval,
-      ThreadLocal::TypedSlot<ThreadLocalBucketsCache>& buckets_tls,
-      Envoy::Event::Dispatcher& main_dispatcher);
+class GlobalRateLimitClientImpl : public Grpc::AsyncStreamCallbacks<
+                                      envoy::service::rate_limit_quota::v3::RateLimitQuotaResponse>,
+                                  public Logger::Loggable<Logger::Id::rate_limit_quota> {
+public:
+  GlobalRateLimitClientImpl(const Grpc::GrpcServiceConfigWithHashKey& config_with_hash_key,
+                            Server::Configuration::FactoryContext& context,
+                            absl::string_view domain_name,
+                            std::chrono::milliseconds send_reports_interval,
+                            ThreadLocal::TypedSlot<ThreadLocalBucketsCache>& buckets_tls,
+                            Envoy::Event::Dispatcher& main_dispatcher);
   ~GlobalRateLimitClientImpl() = default;
 
   void onReceiveMessage(RateLimitQuotaResponsePtr&& response) override;
@@ -71,16 +72,14 @@ class GlobalRateLimitClientImpl
   void onCreateInitialMetadata(Http::RequestHeaderMap&) override {}
   void onReceiveInitialMetadata(Http::ResponseHeaderMapPtr&&) override {}
   void onReceiveTrailingMetadata(Http::ResponseTrailerMapPtr&&) override {}
-  void onRemoteClose(Grpc::Status::GrpcStatus status,
-                     const std::string& message) override;
+  void onRemoteClose(Grpc::Status::GrpcStatus status, const std::string& message) override;
 
   // Functions needed by LocalRateLimitClientImpl to make unsafe modifications
   // to global resources. All are non-blocking & safely callable by worker
   // threads and make unsafe changes by ensuring that all such changes are done
   // by the main thread. Pointer swaps to TLS make the resources readable to
   // worker threads' LocalRateLimitClientImpl instances.
-  void createBucket(const BucketId& bucket_id, size_t id,
-                    const BucketAction& initial_bucket_action,
+  void createBucket(const BucketId& bucket_id, size_t id, const BucketAction& initial_bucket_action,
                     bool initial_request_allowed);
 
   // Set optional callbacks. Primarily used for testing asynchronous operations.
@@ -89,7 +88,7 @@ class GlobalRateLimitClientImpl
     callbacks_ = std::move(callbacks);
   }
 
- private:
+private:
   // Build usage reports (i.e., the request sent to RLQS server) from the
   // buckets in quota bucket cache.
   absl::StatusOr<RateLimitQuotaUsageReports> buildReports();
@@ -97,8 +96,8 @@ class GlobalRateLimitClientImpl
   // Helpers to write to TLS.
   // Copy source-of-truth BucketsCache & pointer-swap/write to TLS.
   inline void writeBucketsToTLS() {
-    auto tl_buckets_cache = std::make_shared<ThreadLocalBucketsCache>(
-        std::make_shared<BucketsCache>(buckets_cache_));
+    auto tl_buckets_cache =
+        std::make_shared<ThreadLocalBucketsCache>(std::make_shared<BucketsCache>(buckets_cache_));
     buckets_tls_.set([tl_buckets_cache]([[maybe_unused]] Envoy::Event::Dispatcher& dispatcher) {
       return tl_buckets_cache;
     });
@@ -107,8 +106,7 @@ class GlobalRateLimitClientImpl
   // Helpers to execute in the main thread, triggered by public interfaces or by
   // internal flows.
   void createBucketImpl(const BucketId& bucket_id, size_t id,
-                        const BucketAction& initial_bucket_action,
-                        bool initial_request_allowed);
+                        const BucketAction& initial_bucket_action, bool initial_request_allowed);
   void sendUsageReportImpl(const RateLimitQuotaUsageReports& reports);
   void onQuotaResponseImpl(const RateLimitQuotaResponse* response);
   bool startStreamImpl();
@@ -157,25 +155,21 @@ class GlobalRateLimitClientImpl
  * thread via TLS.
  */
 inline std::shared_ptr<GlobalRateLimitClientImpl>
-createGlobalRateLimitClientImpl(
-    Server::Configuration::FactoryContext& context,
-    absl::string_view domain_name,
-    std::chrono::milliseconds send_reports_interval,
-    ThreadLocal::TypedSlot<ThreadLocalBucketsCache>& buckets_tls,
-    Grpc::GrpcServiceConfigWithHashKey& config_with_hash_key) {
-  Envoy::Event::Dispatcher& main_dispatcher =
-      context.serverFactoryContext().mainThreadDispatcher();
-  return std::make_shared<GlobalRateLimitClientImpl>(
-      config_with_hash_key, context, domain_name, send_reports_interval,
-      buckets_tls, main_dispatcher);
+createGlobalRateLimitClientImpl(Server::Configuration::FactoryContext& context,
+                                absl::string_view domain_name,
+                                std::chrono::milliseconds send_reports_interval,
+                                ThreadLocal::TypedSlot<ThreadLocalBucketsCache>& buckets_tls,
+                                Grpc::GrpcServiceConfigWithHashKey& config_with_hash_key) {
+  Envoy::Event::Dispatcher& main_dispatcher = context.serverFactoryContext().mainThreadDispatcher();
+  return std::make_shared<GlobalRateLimitClientImpl>(config_with_hash_key, context, domain_name,
+                                                     send_reports_interval, buckets_tls,
+                                                     main_dispatcher);
 }
 
-struct ThreadLocalGlobalRateLimitClientImpl
-    : public Envoy::ThreadLocal::ThreadLocalObject,
-      Logger::Loggable<Logger::Id::rate_limit_quota> {
- public:
-  ThreadLocalGlobalRateLimitClientImpl(
-      std::shared_ptr<GlobalRateLimitClientImpl> global_client)
+struct ThreadLocalGlobalRateLimitClientImpl : public Envoy::ThreadLocal::ThreadLocalObject,
+                                              Logger::Loggable<Logger::Id::rate_limit_quota> {
+public:
+  ThreadLocalGlobalRateLimitClientImpl(std::shared_ptr<GlobalRateLimitClientImpl> global_client)
       : global_client(global_client) {}
 
   // Thread-unsafe operations like index creation should only be done by the
@@ -183,7 +177,7 @@ struct ThreadLocalGlobalRateLimitClientImpl
   std::shared_ptr<GlobalRateLimitClientImpl> global_client;
 };
 
-}  // namespace RateLimitQuota
-}  // namespace HttpFilters
-}  // namespace Extensions
-}  // namespace Envoy
+} // namespace RateLimitQuota
+} // namespace HttpFilters
+} // namespace Extensions
+} // namespace Envoy

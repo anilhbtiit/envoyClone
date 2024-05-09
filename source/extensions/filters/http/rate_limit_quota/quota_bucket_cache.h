@@ -5,13 +5,14 @@
 #include <cstddef>
 #include <memory>
 
+#include "envoy/common/token_bucket.h"
+#include "envoy/event/dispatcher.h"
 #include "envoy/extensions/filters/http/rate_limit_quota/v3/rate_limit_quota.pb.h"
 #include "envoy/extensions/filters/http/rate_limit_quota/v3/rate_limit_quota.pb.validate.h"
 #include "envoy/service/rate_limit_quota/v3/rlqs.pb.h"
 #include "envoy/service/rate_limit_quota/v3/rlqs.pb.validate.h"
-#include "envoy/common/token_bucket.h"
-#include "envoy/event/dispatcher.h"
 #include "envoy/thread_local/thread_local_object.h"
+
 #include "source/common/common/token_bucket_impl.h"
 #include "source/common/protobuf/utility.h"
 #include "source/extensions/filters/http/common/factory_base.h"
@@ -24,16 +25,14 @@ namespace RateLimitQuota {
 using ::envoy::service::rate_limit_quota::v3::BucketId;
 using ::envoy::service::rate_limit_quota::v3::RateLimitQuotaUsageReports;
 
-using BucketAction = ::envoy::service::rate_limit_quota::v3::
-    RateLimitQuotaResponse::BucketAction;
-using BucketQuotaUsage = ::envoy::service::rate_limit_quota::v3::
-    RateLimitQuotaUsageReports::BucketQuotaUsage;
+using BucketAction = ::envoy::service::rate_limit_quota::v3::RateLimitQuotaResponse::BucketAction;
+using BucketQuotaUsage =
+    ::envoy::service::rate_limit_quota::v3::RateLimitQuotaUsageReports::BucketQuotaUsage;
 
 struct QuotaUsage {
   QuotaUsage(uint64_t num_requests_allowed, uint64_t num_requests_denied,
              std::chrono::nanoseconds last_report)
-      : num_requests_allowed(num_requests_allowed),
-        num_requests_denied(num_requests_denied),
+      : num_requests_allowed(num_requests_allowed), num_requests_denied(num_requests_denied),
         last_report(last_report) {}
 
   // Requests allowed.
@@ -48,13 +47,10 @@ struct QuotaUsage {
 // This object stores the data for single bucket entry. The usage cache & action
 // cache are in separate pointers to enable separate pointer-swapping.
 struct CachedBucket {
-  CachedBucket(
-      const BucketId& bucket_id, std::shared_ptr<QuotaUsage> quota_usage,
-      const BucketAction& bucket_action,
-      std::shared_ptr<::Envoy::TokenBucket> token_bucket_limiter)
-      : bucket_id(bucket_id),
-        quota_usage(quota_usage),
-        bucket_action(bucket_action),
+  CachedBucket(const BucketId& bucket_id, std::shared_ptr<QuotaUsage> quota_usage,
+               const BucketAction& bucket_action,
+               std::shared_ptr<::Envoy::TokenBucket> token_bucket_limiter)
+      : bucket_id(bucket_id), quota_usage(quota_usage), bucket_action(bucket_action),
         token_bucket_limiter(token_bucket_limiter) {}
 
   // BucketId object that is associated with this bucket. It is part of the
@@ -75,7 +71,7 @@ struct CachedBucket {
  * worker threads to safely access & modify global resources.
  */
 class RateLimitClient {
- public:
+public:
   virtual ~RateLimitClient() = default;
 
   // Safe creation & getting of global buckets.
@@ -92,7 +88,7 @@ using BucketsCache = absl::flat_hash_map<size_t, std::shared_ptr<CachedBucket>>;
 
 class ThreadLocalBucketsCache : public Envoy::ThreadLocal::ThreadLocalObject,
                                 Logger::Loggable<Logger::Id::rate_limit_quota> {
- public:
+public:
   ThreadLocalBucketsCache(std::shared_ptr<BucketsCache> quota_buckets)
       : quota_buckets_(quota_buckets) {}
 
@@ -101,7 +97,7 @@ class ThreadLocalBucketsCache : public Envoy::ThreadLocal::ThreadLocalObject,
   std::shared_ptr<BucketsCache> quota_buckets_;
 };
 
-}  // namespace RateLimitQuota
-}  // namespace HttpFilters
-}  // namespace Extensions
-}  // namespace Envoy
+} // namespace RateLimitQuota
+} // namespace HttpFilters
+} // namespace Extensions
+} // namespace Envoy

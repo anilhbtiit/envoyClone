@@ -4,7 +4,6 @@
 #include <memory>
 #include <utility>
 
-#include "envoy/type/v3/ratelimit_strategy.pb.h"
 #include "envoy/event/dispatcher.h"
 #include "envoy/grpc/async_client_manager.h"
 #include "envoy/http/filter.h"
@@ -13,6 +12,8 @@
 #include "envoy/server/factory_context.h"
 #include "envoy/server/filter_config.h"
 #include "envoy/thread_local/thread_local.h"
+#include "envoy/type/v3/ratelimit_strategy.pb.h"
+
 #include "source/extensions/filters/http/rate_limit_quota/client_impl.h"
 #include "source/extensions/filters/http/rate_limit_quota/filter.h"
 #include "source/extensions/filters/http/rate_limit_quota/global_client_impl.h"
@@ -29,21 +30,19 @@ struct TlsStore {
       : global_client_tls(context.serverFactoryContext().threadLocal()),
         buckets_tls(context.serverFactoryContext().threadLocal()) {}
 
-  ThreadLocal::TypedSlot<ThreadLocalGlobalRateLimitClientImpl>
-      global_client_tls;
+  ThreadLocal::TypedSlot<ThreadLocalGlobalRateLimitClientImpl> global_client_tls;
   ThreadLocal::TypedSlot<ThreadLocalBucketsCache> buckets_tls;
 };
 
-Http::FilterFactoryCb
-RateLimitQuotaFilterFactory::createFilterFactoryFromProtoTyped(
-    const envoy::extensions::filters::http::rate_limit_quota::v3::
-        RateLimitQuotaFilterConfig& filter_config,
+Http::FilterFactoryCb RateLimitQuotaFilterFactory::createFilterFactoryFromProtoTyped(
+    const envoy::extensions::filters::http::rate_limit_quota::v3::RateLimitQuotaFilterConfig&
+        filter_config,
     const std::string&, Server::Configuration::FactoryContext& context) {
   // Filter config const object is created on the main thread and shared between
   // worker threads.
-  FilterConfigConstSharedPtr config =
-      std::make_shared<envoy::extensions::filters::http::rate_limit_quota::v3::
-                           RateLimitQuotaFilterConfig>(filter_config);
+  FilterConfigConstSharedPtr config = std::make_shared<
+      envoy::extensions::filters::http::rate_limit_quota::v3::RateLimitQuotaFilterConfig>(
+      filter_config);
 
   Grpc::GrpcServiceConfigWithHashKey config_with_hash_key =
       Grpc::GrpcServiceConfigWithHashKey(config->rlqs_server());
@@ -52,8 +51,8 @@ RateLimitQuotaFilterFactory::createFilterFactoryFromProtoTyped(
   // kept alive via shared_ptr to a storage struct. The local rate limit client
   // in each filter instance assumes that the slot will outlive them.
   std::shared_ptr<TlsStore> tls_store = std::make_shared<TlsStore>(context);
-  auto tl_buckets_cache = std::make_shared<ThreadLocalBucketsCache>(
-      std::make_shared<BucketsCache>());
+  auto tl_buckets_cache =
+      std::make_shared<ThreadLocalBucketsCache>(std::make_shared<BucketsCache>());
   tls_store->buckets_tls.set(
       [tl_buckets_cache]([[maybe_unused]] Envoy::Event::Dispatcher& dispatcher) {
         return tl_buckets_cache;
@@ -66,11 +65,9 @@ RateLimitQuotaFilterFactory::createFilterFactoryFromProtoTyped(
 
   // Create the global client resource to be shared via TLS to all worker
   // threads (accessed through a filter-specific LocalRateLimitClient).
-  auto tl_global_client =
-      std::make_shared<ThreadLocalGlobalRateLimitClientImpl>(
-          createGlobalRateLimitClientImpl(
-              context, filter_config.domain(), reporting_interval,
-              tls_store->buckets_tls, config_with_hash_key));
+  auto tl_global_client = std::make_shared<ThreadLocalGlobalRateLimitClientImpl>(
+      createGlobalRateLimitClientImpl(context, filter_config.domain(), reporting_interval,
+                                      tls_store->buckets_tls, config_with_hash_key));
   tls_store->global_client_tls.set(
       [tl_global_client]([[maybe_unused]] Envoy::Event::Dispatcher& dispatcher) {
         return tl_global_client;
@@ -78,8 +75,8 @@ RateLimitQuotaFilterFactory::createFilterFactoryFromProtoTyped(
 
   return [&, config = std::move(config), config_with_hash_key,
           tls_store](Http::FilterChainFactoryCallbacks& callbacks) -> void {
-    std::unique_ptr<RateLimitClient> local_client = createLocalRateLimitClient(
-        tls_store->global_client_tls, tls_store->buckets_tls);
+    std::unique_ptr<RateLimitClient> local_client =
+        createLocalRateLimitClient(tls_store->global_client_tls, tls_store->buckets_tls);
 
     callbacks.addStreamFilter(std::make_shared<RateLimitQuotaFilter>(
         config, context, std::move(local_client), config_with_hash_key));
@@ -89,10 +86,9 @@ RateLimitQuotaFilterFactory::createFilterFactoryFromProtoTyped(
 /**
  * Static registration for the filter. @see RegisterFactory.
  */
-REGISTER_FACTORY(RateLimitQuotaFilterFactory,
-                 Server::Configuration::NamedHttpFilterConfigFactory);
+REGISTER_FACTORY(RateLimitQuotaFilterFactory, Server::Configuration::NamedHttpFilterConfigFactory);
 
-}  // namespace RateLimitQuota
-}  // namespace HttpFilters
-}  // namespace Extensions
-}  // namespace Envoy
+} // namespace RateLimitQuota
+} // namespace HttpFilters
+} // namespace Extensions
+} // namespace Envoy

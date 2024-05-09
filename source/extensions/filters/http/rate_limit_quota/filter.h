@@ -3,10 +3,11 @@
 
 #include "envoy/extensions/filters/http/rate_limit_quota/v3/rate_limit_quota.pb.h"
 #include "envoy/extensions/filters/http/rate_limit_quota/v3/rate_limit_quota.pb.validate.h"
-#include "envoy/service/rate_limit_quota/v3/rlqs.pb.h"
-#include "envoy/service/rate_limit_quota/v3/rlqs.pb.validate.h"
 #include "envoy/grpc/async_client_manager.h"
 #include "envoy/registry/registry.h"
+#include "envoy/service/rate_limit_quota/v3/rlqs.pb.h"
+#include "envoy/service/rate_limit_quota/v3/rlqs.pb.validate.h"
+
 #include "source/common/http/matching/data_impl.h"
 #include "source/common/http/message_impl.h"
 #include "source/common/matcher/matcher.h"
@@ -24,10 +25,10 @@ namespace HttpFilters {
 namespace RateLimitQuota {
 
 using ::envoy::service::rate_limit_quota::v3::RateLimitQuotaResponse;
-using QuotaAssignmentAction = ::envoy::service::rate_limit_quota::v3::
-    RateLimitQuotaResponse::BucketAction::QuotaAssignmentAction;
-using FilterConfig = envoy::extensions::filters::http::rate_limit_quota::v3::
-    RateLimitQuotaFilterConfig;
+using QuotaAssignmentAction = ::envoy::service::rate_limit_quota::v3::RateLimitQuotaResponse::
+    BucketAction::QuotaAssignmentAction;
+using FilterConfig =
+    envoy::extensions::filters::http::rate_limit_quota::v3::RateLimitQuotaFilterConfig;
 using FilterConfigConstSharedPtr = std::shared_ptr<const FilterConfig>;
 
 /**
@@ -42,36 +43,28 @@ enum class RateLimitStatus {
   Error,
 };
 
-class RateLimitQuotaFilter
-    : public Http::PassThroughFilter,
-      public Logger::Loggable<Logger::Id::rate_limit_quota> {
- public:
+class RateLimitQuotaFilter : public Http::PassThroughFilter,
+                             public Logger::Loggable<Logger::Id::rate_limit_quota> {
+public:
   RateLimitQuotaFilter(FilterConfigConstSharedPtr config,
                        Server::Configuration::FactoryContext& factory_context,
                        std::unique_ptr<RateLimitClient> local_client,
                        Grpc::GrpcServiceConfigWithHashKey config_with_hash_key)
-      : config_(std::move(config)),
-        config_with_hash_key_(config_with_hash_key),
-        factory_context_(factory_context),
-        client_(std::move(local_client)),
-        time_source_(factory_context.serverFactoryContext()
-                         .mainThreadDispatcher()
-                         .timeSource()) {
+      : config_(std::move(config)), config_with_hash_key_(config_with_hash_key),
+        factory_context_(factory_context), client_(std::move(local_client)),
+        time_source_(factory_context.serverFactoryContext().mainThreadDispatcher().timeSource()) {
     createMatcher();
   }
 
-  Http::FilterHeadersStatus decodeHeaders(Http::RequestHeaderMap&,
-                                          bool end_stream) override;
+  Http::FilterHeadersStatus decodeHeaders(Http::RequestHeaderMap&, bool end_stream) override;
   void onDestroy() override;
-  void setDecoderFilterCallbacks(
-      Http::StreamDecoderFilterCallbacks& callbacks) override {
+  void setDecoderFilterCallbacks(Http::StreamDecoderFilterCallbacks& callbacks) override {
     callbacks_ = &callbacks;
   }
 
   // Perform request matching. It returns the generated bucket ids if the
   // matching succeeded, error status otherwise.
-  absl::StatusOr<Matcher::ActionPtr> requestMatching(
-      const Http::RequestHeaderMap& headers);
+  absl::StatusOr<Matcher::ActionPtr> requestMatching(const Http::RequestHeaderMap& headers);
 
   Http::Matching::HttpMatchingDataImpl matchingData() {
     ASSERT(data_ptr_ != nullptr);
@@ -83,7 +76,7 @@ class RateLimitQuotaFilter
     // global.
   }
 
- private:
+private:
   // Create the matcher factory and matcher.
   void createMatcher();
 
@@ -104,7 +97,7 @@ class RateLimitQuotaFilter
   TimeSource& time_source_;
 };
 
-}  // namespace RateLimitQuota
-}  // namespace HttpFilters
-}  // namespace Extensions
-}  // namespace Envoy
+} // namespace RateLimitQuota
+} // namespace HttpFilters
+} // namespace Extensions
+} // namespace Envoy

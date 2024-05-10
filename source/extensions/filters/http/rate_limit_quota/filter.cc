@@ -219,6 +219,8 @@ bool RateLimitQuotaFilter::shouldAllowRequest(const CachedBucket& cached_bucket)
                      "filter to fail open.");
     return true;
   }
+  // Not reachable.
+  return true;
 }
 
 Http::FilterHeadersStatus RateLimitQuotaFilter::processCachedBucket(CachedBucket& cached_bucket) {

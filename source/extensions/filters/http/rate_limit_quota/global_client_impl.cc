@@ -66,12 +66,6 @@ GlobalRateLimitClientImpl::GlobalRateLimitClientImpl(
 // Read all active buckets' aggregated usage & build them into a UsageReports
 // message.
 absl::StatusOr<RateLimitQuotaUsageReports> GlobalRateLimitClientImpl::buildReports() {
-  if (!buckets_tls_.get().has_value()) {
-    return absl::InternalError(
-        "Buckets cache is needed but not available for the active RLQS client "
-        "to read & build usage reports.");
-  }
-
   RateLimitQuotaUsageReports report;
   // Build the report from quota bucket source-of-truth. The buckets_cache_ is
   // guaranteed to be safe so long as index deletion & creation only happen in

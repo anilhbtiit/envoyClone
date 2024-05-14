@@ -44,11 +44,10 @@ using RateLimitQuotaResponsePtr =
 class GlobalRateLimitClientCallbacks {
 public:
   virtual ~GlobalRateLimitClientCallbacks() = default;
-  virtual void onBucketCreated([[maybe_unused]] const BucketId& bucket_id,
-                               [[maybe_unused]] size_t id){};
+  virtual void onBucketCreated(const BucketId& bucket_id, size_t id) = 0;
   // Called on success or failure to send the actual message.
-  virtual void onUsageReportsSent(){};
-  virtual void onQuotaResponseProcessed(){};
+  virtual void onUsageReportsSent() = 0;
+  virtual void onQuotaResponseProcessed() = 0;
 };
 
 // Grpc bidirectional streaming client which handles the communication with

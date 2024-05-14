@@ -23,6 +23,7 @@
 #include "test/extensions/filters/http/rate_limit_quota/client_test_utils.h"
 #include "test/mocks/grpc/mocks.h"
 #include "test/mocks/upstream/cluster_info.h"
+#include "test/test_common/logging.h"
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/log/log.h"
@@ -568,6 +569,31 @@ TEST_F(GlobalClientTest, TestResponseProcessingForNonExistentBucket) {
   EXPECT_FALSE(allow_all_bucket.ok());
 }
 
+// Test how usage reporting handles broken (null) values in the buckets cache.
+TEST_F(GlobalClientTest, TestReporterNullHandling) {
+  // When the first bucket creation comes in, the global client starts its
+  // internal stream & reporting timer.
+  mock_stream_client->expectStreamCreation(1);
+  mock_stream_client->expectTimerCreation(reporting_interval_);
+
+  cb_ptr_->expectBuckets({sample_id_hash_});
+  global_client_->createBucket(sample_bucket_id_, sample_id_hash_, default_allow_action, true);
+  cb_ptr_->waitForExpectedBuckets();
+
+  // Intentionally break the cache entry.
+  getBucket(*buckets_tls_, sample_id_hash_)->quota_usage = nullptr;
+
+  RateLimitQuotaUsageReports expected_reports = buildReports(std::vector<reportData>{});
+  EXPECT_CALL(
+      mock_stream_client->stream_,
+      sendMessageRaw_(Grpc::ProtoBufferEqIgnoreRepeatedFieldOrdering(expected_reports), false));
+
+  EXPECT_LOG_CONTAINS("error", "Bug: quota_usage cache is null for an in-use bucket.", {
+    mock_stream_client->timer_->invokeCallback();
+    waitForNotification(cb_ptr_->report_sent);
+  });
+}
+
 class LocalClientTest : public GlobalClientTest {
 protected:
   LocalClientTest() : GlobalClientTest() {}
@@ -616,6 +642,33 @@ TEST_F(LocalClientTest, TestLocalClient) {
   ASSERT_TRUE(bucket);
 
   EXPECT_TRUE(unordered_differencer_.Equals(bucket->bucket_action, default_allow_action));
+}
+
+// Test handling of a bugged filter factory that didn't initialize TLS / global
+// singletons properly. Ensure that errors are logged but nothing crashes.
+TEST_F(LocalClientTest, TestMisinitializedClients) {
+  // Normally, no errors logs if a bucket isn't present.
+  EXPECT_NO_LOGS(EXPECT_EQ(local_client_->getBucket(sample_id_hash_), nullptr));
+
+  // Test case where the TLS slot or the bucket cache itself was never
+  // initialized.
+  buckets_tls_->set([](Envoy::Event::Dispatcher&) { return nullptr; });
+  EXPECT_LOG_CONTAINS("error", "The global cache of buckets for the RLQS filter is unavailable.",
+                      EXPECT_EQ(local_client_->getBucket(sample_id_hash_), nullptr));
+
+  // Test case where bucket creation is attempted but the global client was
+  // never initialized.
+  auto empty_buckets_cache =
+      std::make_shared<ThreadLocalBucketsCache>(std::make_shared<BucketsCache>());
+  buckets_tls_->set([empty_buckets_cache]([[maybe_unused]] Envoy::Event::Dispatcher& dispatcher) {
+    return empty_buckets_cache;
+  });
+  client_tls_->set([]([[maybe_unused]] Envoy::Event::Dispatcher& dispatcher) { return nullptr; });
+  EXPECT_LOG_CONTAINS(
+      "error",
+      "Global RLQS resources are not yet initialized or available "
+      "to worker threads so the current request will be dropped.",
+      local_client_->createBucket(sample_bucket_id_, sample_id_hash_, default_allow_action, true));
 }
 
 } // namespace

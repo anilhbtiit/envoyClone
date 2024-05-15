@@ -836,12 +836,12 @@ TEST_P(RateLimitQuotaIntegrationTest, MultiRequestWithTokenBucket) {
       ASSERT_TRUE(rlqs_connection_->waitForNewStream(*dispatcher_, rlqs_stream_));
 
       simTime().advanceTimeWait(std::chrono::seconds(report_interval_sec_));
-      envoy::service::rate_limit_quota::v3::RateLimitQuotaUsageReports reports;
+      RateLimitQuotaUsageReports reports;
       ASSERT_TRUE(rlqs_stream_->waitForGrpcMessage(*dispatcher_, reports));
       rlqs_stream_->startGrpcStream();
 
       // Build the response.
-      envoy::service::rate_limit_quota::v3::RateLimitQuotaResponse rlqs_response;
+      RateLimitQuotaResponse rlqs_response;
       absl::flat_hash_map<std::string, std::string> custom_headers_cpy = custom_headers;
       custom_headers_cpy.insert({"name", "prod"});
       auto* bucket_action = rlqs_response.add_bucket_action();

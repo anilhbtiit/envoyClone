@@ -511,6 +511,40 @@ TEST_F(FilterTest, DecodeHeaderWithCachedDeny) {
   EXPECT_EQ(bucket->quota_usage->num_requests_denied.load(std::memory_order_relaxed), 1);
 }
 
+TEST_F(FilterTest, DecodeHeaderWithCachedUnsupportedAssignment) {
+  addMatcherConfig(MatcherConfigType::Valid);
+  createFilter();
+  // Define the key value pairs that is used to build the bucket_id dynamically
+  // via `custom_value` in the config.
+  absl::flat_hash_map<std::string, std::string> custom_value_pairs = {{"environment", "staging"},
+                                                                      {"group", "envoy"}};
+  buildCustomHeader(custom_value_pairs);
+
+  absl::flat_hash_map<std::string, std::string> expected_bucket_ids = custom_value_pairs;
+  expected_bucket_ids.insert({"name", "prod"});
+  verifyRequestMatchingSucceeded(expected_bucket_ids);
+
+  // Expect request processing to check for an existing bucket, find one with an
+  // invalid blanket assignment.
+  BucketId bucket_id = bucketIdFromMap(expected_bucket_ids);
+  size_t bucket_id_hash = MessageUtil::hash(bucket_id);
+  RateLimitQuotaResponse::BucketAction action;
+  action.mutable_quota_assignment_action()->mutable_rate_limit_strategy()->set_blanket_rule(
+      RateLimitStrategy::BlanketRule(RateLimitStrategy::BlanketRule_MAX + 1));
+  std::shared_ptr<CachedBucket> bucket = std::make_shared<CachedBucket>(
+      bucket_id, std::make_shared<QuotaUsage>(1, 0, std::chrono::nanoseconds(0)), action, nullptr);
+
+  EXPECT_CALL(*mock_local_client_, getBucket(bucket_id_hash)).WillOnce(Return(bucket));
+
+  Http::FilterHeadersStatus status;
+  EXPECT_LOG_CONTAINS("error",
+                      "Bug: an RLQS bucket is cached with an unexpected type of blanket rule",
+                      { status = filter_->decodeHeaders(default_headers_, false); });
+  EXPECT_EQ(status, Envoy::Http::FilterHeadersStatus::Continue);
+  EXPECT_EQ(bucket->quota_usage->num_requests_allowed.load(std::memory_order_relaxed), 2);
+  EXPECT_EQ(bucket->quota_usage->num_requests_denied.load(std::memory_order_relaxed), 0);
+}
+
 TEST_F(FilterTest, DecodeHeaderWithTokenBucketAllow) {
   addMatcherConfig(MatcherConfigType::Valid);
   createFilter();
@@ -621,6 +655,45 @@ TEST_F(FilterTest, DecodeHeaderWithMissingTokenBucket) {
 
   Http::FilterHeadersStatus status = filter_->decodeHeaders(default_headers_, false);
   EXPECT_EQ(status, Envoy::Http::FilterHeadersStatus::Continue);
+}
+
+TEST_F(FilterTest, UnsupportedRequestsPerTimeUnit) {
+  addMatcherConfig(MatcherConfigType::Valid);
+  createFilter();
+  // Define the key value pairs that is used to build the bucket_id dynamically
+  // via `custom_value` in the config.
+  absl::flat_hash_map<std::string, std::string> custom_value_pairs = {{"environment", "staging"},
+                                                                      {"group", "envoy"}};
+  buildCustomHeader(custom_value_pairs);
+
+  absl::flat_hash_map<std::string, std::string> expected_bucket_ids = custom_value_pairs;
+  expected_bucket_ids.insert({"name", "prod"});
+  verifyRequestMatchingSucceeded(expected_bucket_ids);
+
+  // Expect request processing to check for an existing bucket, find one with an
+  // ALLOW_ALL blanket action.
+  BucketId bucket_id = bucketIdFromMap(expected_bucket_ids);
+  size_t bucket_id_hash = MessageUtil::hash(bucket_id);
+  RateLimitQuotaResponse::BucketAction action;
+  RateLimitStrategy::RequestsPerTimeUnit* requests_per_time_unit =
+      action.mutable_quota_assignment_action()
+          ->mutable_rate_limit_strategy()
+          ->mutable_requests_per_time_unit();
+  requests_per_time_unit->set_requests_per_time_unit(10);
+  requests_per_time_unit->set_time_unit(envoy::type::v3::RateLimitUnit::MINUTE);
+
+  std::shared_ptr<CachedBucket> bucket = std::make_shared<CachedBucket>(
+      bucket_id, std::make_shared<QuotaUsage>(1, 0, std::chrono::nanoseconds(0)), action, nullptr);
+
+  EXPECT_CALL(*mock_local_client_, getBucket(bucket_id_hash)).WillOnce(Return(bucket));
+
+  Http::FilterHeadersStatus status;
+  EXPECT_LOG_CONTAINS("warn", "RequestsPerTimeUnit is not yet supported by RLQS.",
+                      { status = filter_->decodeHeaders(default_headers_, false); });
+
+  EXPECT_EQ(status, Envoy::Http::FilterHeadersStatus::Continue);
+  EXPECT_EQ(bucket->quota_usage->num_requests_allowed.load(std::memory_order_relaxed), 2);
+  EXPECT_EQ(bucket->quota_usage->num_requests_denied.load(std::memory_order_relaxed), 0);
 }
 
 } // namespace

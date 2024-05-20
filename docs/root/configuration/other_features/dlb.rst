@@ -42,7 +42,7 @@ Download DLB driver release tarball from `dlb website <https://www.intel.com/con
 Using Dlb
 ---------
 
-Create a config file to make Envoy listen 10000 port as proxy, the upstream server listens 12000 port.
+Create a config file named `dlb-config.yaml` to make Envoy listen 10000 port as proxy, the upstream server listens 12000 port.
 
 .. literalinclude:: _include/dlb_example_config.yaml
  :language: yaml

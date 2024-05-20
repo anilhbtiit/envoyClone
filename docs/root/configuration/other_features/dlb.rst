@@ -50,19 +50,16 @@ Create a config file to make Envoy listen 10000 port as proxy, the upstream serv
 Run the upstream service:
 
 .. code-block:: bash
-
 $ docker run -d -p 12000:80 nginx
 
 Run Envoy with dlb enabled:
 
 .. code-block:: bash
-
 $ ./envoy --concurrency 2 -c dlb-config.yaml
 
 Test:
 
 .. code-block:: bash
-
 $ curl localhost:10000
 
 You should get output from Nginx like below:

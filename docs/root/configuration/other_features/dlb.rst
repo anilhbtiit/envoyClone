@@ -66,6 +66,7 @@ Test:
  $ curl localhost:10000
 
 You should get output from Nginx like below:
+
 .. code-block:: text
 
   <!DOCTYPE html>

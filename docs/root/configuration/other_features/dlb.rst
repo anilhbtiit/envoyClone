@@ -45,49 +45,49 @@ Using Dlb
 Create a config file to make Envoy listen 10000 port as proxy, the upstream server listens 12000 port.
 
 .. literalinclude:: _include/dlb_example_config.yaml
-    :language: yaml
+ :language: yaml
 
 Run the upstream service:
 
 .. code-block:: bash
 
-    $ docker run -d -p 12000:80 nginx
+ $ docker run -d -p 12000:80 nginx
 
 Run Envoy with dlb enabled:
 
 .. code-block:: bash
 
-    $ ./envoy --concurrency 2 -c dlb-config.yaml
+ $ ./envoy --concurrency 2 -c dlb-config.yaml
 
 Test:
 
 .. code-block:: bash
 
-    $ curl localhost:10000
+ $ curl localhost:10000
 
 You should get output from Nginx like below:
 .. code-block:: text
 
-    <!DOCTYPE html>
-    <html>
-    <head>
-    <title>Welcome to nginx!</title>
-    <style>
-    html { color-scheme: light dark; }
-    body { width: 35em; margin: 0 auto;
-    font-family: Tahoma, Verdana, Arial, sans-serif; }
-    </style>
-    </head>
-    <body>
-    <h1>Welcome to nginx!</h1>
-    <p>If you see this page, the nginx web server is successfully installed and
-    working. Further configuration is required.</p>
+  <!DOCTYPE html>
+  <html>
+  <head>
+  <title>Welcome to nginx!</title>
+  <style>
+  html { color-scheme: light dark; }
+  body { width: 35em; margin: 0 auto;
+  font-family: Tahoma, Verdana, Arial, sans-serif; }
+  </style>
+  </head>
+  <body>
+  <h1>Welcome to nginx!</h1>
+  <p>If you see this page, the nginx web server is successfully installed and
+  working. Further configuration is required.</p>
 
-    <p>For online documentation and support please refer to
-    <a href="http://nginx.org/">nginx.org</a>.<br/>
-    Commercial support is available at
-    <a href="http://nginx.com/">nginx.com</a>.</p>
+  <p>For online documentation and support please refer to
+  <a href="http://nginx.org/">nginx.org</a>.<br/>
+  Commercial support is available at
+  <a href="http://nginx.com/">nginx.com</a>.</p>
 
-    <p><em>Thank you for using nginx.</em></p>
-    </body>
-    </html>
+  <p><em>Thank you for using nginx.</em></p>
+  </body>
+  </html>

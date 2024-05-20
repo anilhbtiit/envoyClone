@@ -25,7 +25,36 @@ static_resources:
                   envoy_grpc:
                     cluster_name: opentelemetry_collector
                   timeout: 0.250s
-                service_name: front-envoy
+                service_name: &service_name front-envoy
+          access_log:
+          - name: envoy.access_loggers.open_telemetry
+            typed_config:
+              "@type": type.googleapis.com/envoy.extensions.access_loggers.open_telemetry.v3.OpenTelemetryAccessLogConfig
+              common_config:
+                log_name: "otel_envoy_accesslog"
+                transport_api_version: V3
+                grpc_service:
+                  envoy_grpc:
+                    cluster_name: opentelemetry_collector
+                  timeout: 0.250s
+              resource_attributes:
+                values:
+                - key: "service.name"
+                  value:
+                    string_value: *service_name # Should match `service_name` in tracing section
+              body:
+                string_value: "%REQ(:METHOD)% %REQ(X-ENVOY-ORIGINAL-PATH?:PATH)%"
+              attributes:
+                values:
+                - key: "url.path"
+                  value:
+                    string_value: "%REQ(X-ENVOY-ORIGINAL-PATH?:PATH)%"
+                - key: "http.request.method"
+                  value:
+                    string_value: "%REQ(:METHOD)%"
+                - key: "http.response.status_code"
+                  value:
+                    string_value: "%RESPONSE_CODE%"
           codec_type: AUTO
           stat_prefix: ingress_http
           http_filters:
@@ -51,7 +80,6 @@ static_resources:
                   cluster: envoy_cluster2
                 decorator:
                   operation: routeToEnvoy2ViaEnvoy1
-
   clusters:
   - name: envoy_cluster1
     type: STRICT_DNS

@@ -57,7 +57,7 @@ Run the upstream service:
 
  $ docker run -d -p 12000:80 nginx
 
-Run Envoy with dlb enabled:
+Run Envoy with DLB connection balancer enabled:
 
 .. code-block:: console
 

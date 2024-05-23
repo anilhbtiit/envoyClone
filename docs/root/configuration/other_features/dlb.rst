@@ -8,7 +8,7 @@ DLB Connection Balancer
 
 This connection balancer extension provides Envoy with low latency networking by integrating with `Intel DLB <https://networkbuilders.intel.com/solutionslibrary/queue-management-and-load-balancing-on-intel-architecture>`_ through the libdlb library.
 
-The DLB connection balancer is only included in :ref:`contrib images <install_contrib>`
+The DLB connection balancer is only included in :ref:`contrib images <install_contrib>`.
 
 Example configuration
 ---------------------
@@ -42,12 +42,12 @@ You can download the DLB driver release tarball from the `DLB website <https://w
 Using DLB
 ---------
 
-With the following configuration Envoy listens on port 10000 and proxies to an upstream server listening on port 12000.
+With the example configuration Envoy listens on port 10000 and proxies to an upstream server listening on port 12000.
 
 .. literalinclude:: _include/dlb_example_config.yaml
  :language: yaml
- :lines: 1-45
- :lineno-start: 1
+ :lines: 7-11
+ :lineno-start: 7
  :linenos:
  :caption: :download:`dlb_example_config.yaml <_include/dlb_example_config.yaml>`
 

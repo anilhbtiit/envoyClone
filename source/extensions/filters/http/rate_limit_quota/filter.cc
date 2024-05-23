@@ -117,7 +117,6 @@ Http::FilterHeadersStatus RateLimitQuotaFilter::decodeHeaders(Http::RequestHeade
 
   return sendDenyResponse(callbacks_, Envoy::Http::Code::TooManyRequests,
                           StreamInfo::CoreResponseFlag::ResponseFromCacheFilter);
-  ;
 }
 
 void RateLimitQuotaFilter::createMatcher() {
@@ -189,25 +188,17 @@ bool RateLimitQuotaFilter::shouldAllowRequest(const CachedBucket& cached_bucket)
   switch (rate_limit_strategy.strategy_case()) {
   case RateLimitStrategy::kBlanketRule:
     switch (rate_limit_strategy.blanket_rule()) {
+      PANIC_ON_PROTO_ENUM_SENTINEL_VALUES;
     case RateLimitStrategy::ALLOW_ALL:
       return true;
     case RateLimitStrategy::DENY_ALL:
       return false;
-    default:
-      ENVOY_LOG(error,
-                "Bug: an RLQS bucket is cached with an unexpected type of "
-                "blanket rule causing the filter to fail open. ID: ",
-                cached_bucket.bucket_id.ShortDebugString(),
-                ". Strategy: ", rate_limit_strategy.ShortDebugString());
-      return true;
     }
     break;
   case RateLimitStrategy::kTokenBucket:
-    if (!cached_bucket.token_bucket_limiter) {
-      ENVOY_LOG(error, "Bug: an RLQS bucket is assigned a TokenBucket rate limiting "
-                       "strategy but no associated TokenBucket has been initialized.");
-      return true;
-    }
+    // A TokenBucket assignment should always have its accompanying
+    // TokenBucket implementation in the cache. If it's null instead, then
+    // it's due to a bug, and this will crash.
     return cached_bucket.token_bucket_limiter->consume(1, false);
   case RateLimitStrategy::kRequestsPerTimeUnit:
     // TODO(tyxia) Implement RequestsPerTimeUnit.
@@ -224,18 +215,15 @@ bool RateLimitQuotaFilter::shouldAllowRequest(const CachedBucket& cached_bucket)
 }
 
 Http::FilterHeadersStatus RateLimitQuotaFilter::processCachedBucket(CachedBucket& cached_bucket) {
+  // The QuotaUsage of a cached bucket should never be null. If it is due to a
+  // bug, this will crash.
   std::shared_ptr<QuotaUsage> quota_usage = cached_bucket.quota_usage;
-  if (!quota_usage) {
-    ENVOY_LOG(error, "Bug: RLQS filter unable to increment usage counters for a "
-                     "cached bucket as the pointer to the usage cache is null. This "
-                     "should never be the case.");
-    return Envoy::Http::FilterHeadersStatus::Continue;
-  }
 
   if (shouldAllowRequest(cached_bucket)) {
     incrementAtomic(quota_usage->num_requests_allowed);
     return Envoy::Http::FilterHeadersStatus::Continue;
   }
+
   incrementAtomic(quota_usage->num_requests_denied);
   // TODO(tyxia) Build the customized response based on
   // `DenyResponseSettings` if it is configured.

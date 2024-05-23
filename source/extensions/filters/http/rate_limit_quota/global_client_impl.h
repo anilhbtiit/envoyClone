@@ -90,7 +90,7 @@ public:
 private:
   // Build usage reports (i.e., the request sent to RLQS server) from the
   // buckets in quota bucket cache.
-  absl::StatusOr<RateLimitQuotaUsageReports> buildReports();
+  RateLimitQuotaUsageReports buildReports();
 
   // Helpers to write to TLS.
   // Copy source-of-truth BucketsCache & pointer-swap/write to TLS.

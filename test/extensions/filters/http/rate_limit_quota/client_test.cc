@@ -42,7 +42,9 @@ namespace {
 using envoy::service::rate_limit_quota::v3::RateLimitQuotaResponse;
 using envoy::service::rate_limit_quota::v3::RateLimitQuotaUsageReports;
 using envoy::type::v3::RateLimitStrategy;
+using envoy::type::v3::RateLimitUnit;
 using envoy::type::v3::TokenBucket;
+using RequestsPerTimeUnit = envoy::type::v3::RateLimitStrategy::RequestsPerTimeUnit;
 using Protobuf::util::MessageDifferencer;
 using testing::Unused;
 
@@ -184,6 +186,33 @@ protected:
     token_bucket->set_max_tokens(max_tokens);
     token_bucket->mutable_tokens_per_fill()->set_value(tokens_per_fill);
     token_bucket->mutable_fill_interval()->set_seconds(fill_interval.count());
+    return action;
+  }
+
+  BucketAction buildRequestsPerTimeUnitAction(uint64_t requests_per_time_unit,
+                                              RateLimitUnit time_unit) {
+    BucketAction action;
+    RequestsPerTimeUnit* config = action.mutable_quota_assignment_action()
+                                      ->mutable_rate_limit_strategy()
+                                      ->mutable_requests_per_time_unit();
+    config->set_requests_per_time_unit(requests_per_time_unit);
+    config->set_time_unit(time_unit);
+    return action;
+  }
+
+  BucketAction buildRequestsPerTimeUnitAction(const BucketId& bucket_id,
+                                              uint64_t requests_per_time_unit,
+                                              RateLimitUnit time_unit) {
+    BucketAction action = buildRequestsPerTimeUnitAction(requests_per_time_unit, time_unit);
+    action.mutable_bucket_id()->CopyFrom(bucket_id);
+    action.mutable_quota_assignment_action()->mutable_assignment_time_to_live()->set_seconds(120);
+    return action;
+  }
+
+  BucketAction buildAbandonAction(const BucketId& bucket_id) {
+    BucketAction action;
+    *action.mutable_abandon_action() = BucketAction::AbandonAction();
+    action.mutable_bucket_id()->CopyFrom(bucket_id);
     return action;
   }
 };
@@ -520,6 +549,68 @@ TEST_F(GlobalClientTest, TestBasicResponseProcessing) {
   EXPECT_TRUE(unordered_differencer_.Equals(token_bucket->bucket_action, token_bucket_action));
 }
 
+// The RLQS server is expected to pass a duplicate token bucket assignment to
+// refresh its expiration time in the cache, so the token bucket should
+// not have its timing or token count reset.
+TEST_F(GlobalClientTest, TestDuplicateTokenBucket) {
+  mock_stream_client->expectStreamCreation(1);
+  mock_stream_client->expectTimerCreation(reporting_interval_);
+
+  cb_ptr_->expectBuckets({sample_id_hash_});
+  global_client_->createBucket(sample_bucket_id_, sample_id_hash_, default_allow_action, true);
+  cb_ptr_->waitForExpectedBuckets();
+
+  RateLimitQuotaUsageReports expected_reports = buildReports(
+      std::vector<reportData>{{/*allowed*/ 1, /*denied*/ 0, /*bucket_id*/ sample_bucket_id_}});
+  EXPECT_CALL(
+      mock_stream_client->stream_,
+      sendMessageRaw_(Grpc::ProtoBufferEqIgnoreRepeatedFieldOrdering(expected_reports), false));
+
+  mock_stream_client->timer_->invokeCallback();
+  waitForNotification(cb_ptr_->report_sent);
+
+  // Receive the initial token bucket assignment.
+  int max_tokens = 300;
+  auto token_bucket_action =
+      buildTokenBucketAction(sample_bucket_id_, max_tokens, 60, std::chrono::seconds(12));
+  std::unique_ptr<RateLimitQuotaResponse> response = std::make_unique<RateLimitQuotaResponse>();
+  response->add_bucket_action()->CopyFrom(token_bucket_action);
+
+  // Send the response across the stream.
+  global_client_->onReceiveMessage(std::move(response));
+  waitForNotification(cb_ptr_->response_processed);
+
+  std::shared_ptr<CachedBucket> token_bucket = getBucket(*buckets_tls_, sample_id_hash_);
+  EXPECT_TRUE(unordered_differencer_.Equals(token_bucket->bucket_action, token_bucket_action));
+
+  // Ensure that receiving a duplicate assignment doesn't reset the stateful
+  // token bucket.
+  TimeSource* time_source = mock_stream_client->dispatcher_->time_system_.get();
+  std::shared_ptr<::Envoy::TokenBucket> cached_tb = token_bucket->token_bucket_limiter;
+  EXPECT_EQ(cached_tb->consume(max_tokens, false), max_tokens);
+
+  const MonotonicTime now = time_source->monotonicTime();
+  std::chrono::milliseconds cached_next_token_available = cached_tb->nextTokenAvailable();
+  EXPECT_GT(cached_next_token_available, now.time_since_epoch());
+
+  // Resend the same token bucket action.
+  response = std::make_unique<RateLimitQuotaResponse>();
+  response->add_bucket_action()->CopyFrom(token_bucket_action);
+  // Send the response across the stream.
+  global_client_->onReceiveMessage(std::move(response));
+  waitForNotification(cb_ptr_->response_processed);
+
+  std::shared_ptr<CachedBucket> updated_token_bucket = getBucket(*buckets_tls_, sample_id_hash_);
+  EXPECT_TRUE(
+      unordered_differencer_.Equals(updated_token_bucket->bucket_action, token_bucket_action));
+  std::shared_ptr<::Envoy::TokenBucket> updated_tb = updated_token_bucket->token_bucket_limiter;
+  std::chrono::milliseconds updated_next_token_available = updated_tb->nextTokenAvailable();
+  // These should match if the token bucket has been carried over, and hasn't
+  // reset its state.
+  EXPECT_EQ(updated_next_token_available, cached_next_token_available);
+  EXPECT_EQ(cached_tb, updated_tb);
+}
+
 // Expect assignments that don't match to any cached buckets to be dropped from
 // assignments without damaging the envoy.
 TEST_F(GlobalClientTest, TestResponseProcessingForNonExistentBucket) {
@@ -569,29 +660,82 @@ TEST_F(GlobalClientTest, TestResponseProcessingForNonExistentBucket) {
   EXPECT_FALSE(allow_all_bucket.ok());
 }
 
-// Test how usage reporting handles broken (null) values in the buckets cache.
-TEST_F(GlobalClientTest, TestReporterNullHandling) {
-  // When the first bucket creation comes in, the global client starts its
-  // internal stream & reporting timer.
+TEST_F(GlobalClientTest, TestUnsupportedActions) {
   mock_stream_client->expectStreamCreation(1);
   mock_stream_client->expectTimerCreation(reporting_interval_);
 
-  cb_ptr_->expectBuckets({sample_id_hash_});
+  BucketId sample_bucket_id2;
+  (*sample_bucket_id2.mutable_bucket())["mock_id_key"] = "mutable_id_value3";
+  (*sample_bucket_id2.mutable_bucket())["mock_id_key2"] = "mutable_id_value4";
+  size_t sample_id_hash2 = MessageUtil::hash(sample_bucket_id2);
+  BucketId sample_bucket_id3;
+  (*sample_bucket_id3.mutable_bucket())["mock_id_key"] = "mutable_id_value5";
+  (*sample_bucket_id3.mutable_bucket())["mock_id_key2"] = "mutable_id_value6";
+  size_t sample_id_hash3 = MessageUtil::hash(sample_bucket_id3);
+
+  BucketAction default_allow_action2 = default_allow_action;
+  *default_allow_action2.mutable_bucket_id() = sample_bucket_id2;
+  BucketAction default_allow_action3 = default_allow_action;
+  *default_allow_action3.mutable_bucket_id() = sample_bucket_id3;
+
+  cb_ptr_->expectBuckets({sample_id_hash_, sample_id_hash2, sample_id_hash3});
   global_client_->createBucket(sample_bucket_id_, sample_id_hash_, default_allow_action, true);
+  global_client_->createBucket(sample_bucket_id2, sample_id_hash2, default_allow_action2, true);
+  global_client_->createBucket(sample_bucket_id3, sample_id_hash3, default_allow_action3, true);
   cb_ptr_->waitForExpectedBuckets();
 
-  // Intentionally break the cache entry.
-  getBucket(*buckets_tls_, sample_id_hash_)->quota_usage = nullptr;
-
-  RateLimitQuotaUsageReports expected_reports = buildReports(std::vector<reportData>{});
+  RateLimitQuotaUsageReports expected_reports = buildReports(
+      std::vector<reportData>{{/*allowed*/ 1, /*denied*/ 0, /*bucket_id*/ sample_bucket_id_},
+                              {/*allowed*/ 1, /*denied*/ 0, /*bucket_id*/ sample_bucket_id2},
+                              {/*allowed*/ 1, /*denied*/ 0, /*bucket_id*/ sample_bucket_id3}});
   EXPECT_CALL(
       mock_stream_client->stream_,
       sendMessageRaw_(Grpc::ProtoBufferEqIgnoreRepeatedFieldOrdering(expected_reports), false));
 
-  EXPECT_LOG_CONTAINS("error", "Bug: quota_usage cache is null for an in-use bucket.", {
-    mock_stream_client->timer_->invokeCallback();
-    waitForNotification(cb_ptr_->report_sent);
-  });
+  mock_stream_client->timer_->invokeCallback();
+  waitForNotification(cb_ptr_->report_sent);
+
+  // Check handling of empty responses & null responses from the RLQS server to
+  // make sure the external server cannot cause the envoy to crash.
+  std::unique_ptr<RateLimitQuotaResponse> empty_response =
+      std::make_unique<RateLimitQuotaResponse>();
+  global_client_->onReceiveMessage(std::move(empty_response));
+  waitForNotification(cb_ptr_->response_processed);
+  global_client_->onReceiveMessage(nullptr);
+
+  // Currently, RequestsPerTimeUnitAction and AbandonAction are not implemented.
+  // This response will check their & unset action handling.
+  auto requests_per_time_action =
+      buildRequestsPerTimeUnitAction(sample_bucket_id_, 100, RateLimitUnit::MINUTE);
+  auto abandon_action = buildAbandonAction(sample_bucket_id2);
+  auto invalid_unset_action = BucketAction();
+  *invalid_unset_action.mutable_bucket_id() = sample_bucket_id3;
+  *invalid_unset_action.mutable_quota_assignment_action()->mutable_rate_limit_strategy() =
+      RateLimitStrategy();
+
+  std::unique_ptr<RateLimitQuotaResponse> response = std::make_unique<RateLimitQuotaResponse>();
+  response->add_bucket_action()->CopyFrom(requests_per_time_action);
+  response->add_bucket_action()->CopyFrom(abandon_action);
+  response->add_bucket_action()->CopyFrom(invalid_unset_action);
+
+  // Send the response across the stream & expect logging.
+  EXPECT_LOG_CONTAINS_ALL_OF(
+      Envoy::ExpectedLogMessages(
+          {{"debug", "Abandon action is not yet handled properly in RLQS."},
+           {"error", "RequestsPerTimeUnit rate limit strategies are not yet supported "
+                     "in RLQS."},
+           {"error", "Unexpected rate limit strategy in RLQS response:"}}),
+      {
+        global_client_->onReceiveMessage(std::move(response));
+        waitForNotification(cb_ptr_->response_processed);
+      });
+
+  // Expect the buckets in TLS to still have default assignments.
+  std::shared_ptr<CachedBucket> bucket1 = getBucket(*buckets_tls_, sample_id_hash_);
+  EXPECT_TRUE(unordered_differencer_.Equals(bucket1->bucket_action, default_allow_action));
+
+  std::shared_ptr<CachedBucket> bucket2 = getBucket(*buckets_tls_, sample_id_hash2);
+  EXPECT_TRUE(unordered_differencer_.Equals(bucket2->bucket_action, default_allow_action2));
 }
 
 class LocalClientTest : public GlobalClientTest {
@@ -642,33 +786,6 @@ TEST_F(LocalClientTest, TestLocalClient) {
   ASSERT_TRUE(bucket);
 
   EXPECT_TRUE(unordered_differencer_.Equals(bucket->bucket_action, default_allow_action));
-}
-
-// Test handling of a bugged filter factory that didn't initialize TLS / global
-// singletons properly. Ensure that errors are logged but nothing crashes.
-TEST_F(LocalClientTest, TestMisinitializedClients) {
-  // Normally, no errors logs if a bucket isn't present.
-  EXPECT_NO_LOGS(EXPECT_EQ(local_client_->getBucket(sample_id_hash_), nullptr));
-
-  // Test case where the TLS slot or the bucket cache itself was never
-  // initialized.
-  buckets_tls_->set([](Envoy::Event::Dispatcher&) { return nullptr; });
-  EXPECT_LOG_CONTAINS("error", "The global cache of buckets for the RLQS filter is unavailable.",
-                      EXPECT_EQ(local_client_->getBucket(sample_id_hash_), nullptr));
-
-  // Test case where bucket creation is attempted but the global client was
-  // never initialized.
-  auto empty_buckets_cache =
-      std::make_shared<ThreadLocalBucketsCache>(std::make_shared<BucketsCache>());
-  buckets_tls_->set([empty_buckets_cache]([[maybe_unused]] Envoy::Event::Dispatcher& dispatcher) {
-    return empty_buckets_cache;
-  });
-  client_tls_->set([]([[maybe_unused]] Envoy::Event::Dispatcher& dispatcher) { return nullptr; });
-  EXPECT_LOG_CONTAINS(
-      "error",
-      "Global RLQS resources are not yet initialized or available "
-      "to worker threads so the current request will be dropped.",
-      local_client_->createBucket(sample_bucket_id_, sample_id_hash_, default_allow_action, true));
 }
 
 } // namespace

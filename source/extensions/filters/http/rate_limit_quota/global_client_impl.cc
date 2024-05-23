@@ -65,22 +65,15 @@ GlobalRateLimitClientImpl::GlobalRateLimitClientImpl(
 
 // Read all active buckets' aggregated usage & build them into a UsageReports
 // message.
-absl::StatusOr<RateLimitQuotaUsageReports> GlobalRateLimitClientImpl::buildReports() {
+RateLimitQuotaUsageReports GlobalRateLimitClientImpl::buildReports() {
   RateLimitQuotaUsageReports report;
   // Build the report from quota bucket source-of-truth. The buckets_cache_ is
   // guaranteed to be safe so long as index deletion & creation only happen in
   // the main thread.
   for (const auto& [_, cached] : buckets_cache_) {
-    if (!cached) {
-      ENVOY_LOG(error, "Bug: bucket cache is null for an in-use bucket.");
-      continue;
-    }
-
+    // If the cached bucket or underlying QuotaUsage are null, it is due to a
+    // bug, and should cause a crash.
     std::shared_ptr<QuotaUsage> cached_usage = cached->quota_usage;
-    if (!cached_usage) {
-      ENVOY_LOG(error, "Bug: quota_usage cache is null for an in-use bucket.");
-      continue;
-    }
     auto* usage = report.add_bucket_quota_usages();
     *usage->mutable_bucket_id() = cached->bucket_id;
 
@@ -145,23 +138,12 @@ void GlobalRateLimitClientImpl::createBucketImpl(const BucketId& bucket_id, size
   // If multiple createBucket calls were posted before the bucket was pushed to
   // TLS, just increment the appropriate usage counter.
   if (auto bucket_it = buckets_cache_.find(id); bucket_it != buckets_cache_.end()) {
+    // The bucket and underlying QuotaUsage in the source-of-truth should never
+    // be null. If there's a bug that creates null entries, then this will
+    // crash.
     std::shared_ptr<CachedBucket> bucket = bucket_it->second;
-    if (!bucket) {
-      ENVOY_LOG(error,
-                "Bug: bucket has been added into the source-of-truth with an "
-                "invalid (null) cache ptr, ID: ",
-                bucket_id.ShortDebugString());
-      return;
-    }
-
     std::shared_ptr<QuotaUsage> quota_usage = bucket->quota_usage;
-    if (!quota_usage) {
-      ENVOY_LOG(error,
-                "Bug: quota_usage cache is null for a bucket that has already "
-                "finished initialization in the source-of-truth, ID: ",
-                bucket_id.ShortDebugString());
-      return;
-    }
+
     // Increment num_requests_(allowed|denied) based on the allow/deny choice
     // already made by the calling filter.
     std::atomic<uint64_t>& num_requests =
@@ -214,13 +196,6 @@ bool protoTokenBucketsEq(const ::envoy::type::v3::TokenBucket& new_tb,
           new_tb.fill_interval().nanos() == old_tb.fill_interval().nanos());
 }
 
-// Check if RequestsPerTimeUnit are deeply equal.
-bool requestsPerTimeUnitEq(const RateLimitStrategy::RequestsPerTimeUnit& old_rpu,
-                           const RateLimitStrategy::RequestsPerTimeUnit& new_rpu) {
-  return (new_rpu.requests_per_time_unit() == old_rpu.requests_per_time_unit() &&
-          new_rpu.time_unit() == old_rpu.time_unit());
-}
-
 std::shared_ptr<::Envoy::TokenBucket> createTokenBucketFromAction(const RateLimitStrategy& strategy,
                                                                   TimeSource& time_source) {
   const auto& token_bucket = strategy.token_bucket();
@@ -265,17 +240,9 @@ void GlobalRateLimitClientImpl::onQuotaResponseImpl(const RateLimitQuotaResponse
                 ". From response: ", response->ShortDebugString());
       continue;
     }
-
-    // Index in the source-of-truth BucketCache.
+    // Indexed bucket in the source-of-truth cache. The indexed shared_ptr
+    // should never be null. If it is null due to a bug, this will crash.
     std::shared_ptr<CachedBucket> bucket = bucket_it->second;
-    if (!bucket) {
-      ENVOY_LOG(error,
-                "BUG: received a response with a bucket that is present in the "
-                "cache but whose index holds only null. ID: ",
-                action.bucket_id().ShortDebugString(),
-                ". From response: ", response->ShortDebugString());
-      continue;
-    }
 
     // Translate `quota_assignment_action` to a TokenBucket or a blanket
     // assignment as appropriate.
@@ -303,15 +270,17 @@ void GlobalRateLimitClientImpl::onQuotaResponseImpl(const RateLimitQuotaResponse
         }
         break;
       case RateLimitStrategy::kRequestsPerTimeUnit:
-        ENVOY_LOG(error, "RequestsPerTimeUnit rate limit strategies is not yet "
+        ENVOY_LOG(error, "RequestsPerTimeUnit rate limit strategies are not yet "
                          "supported in RLQS.");
-        break;
-      default:
+        continue;
+      case RateLimitStrategy::STRATEGY_NOT_SET:
         ENVOY_LOG(error, "Unexpected rate limit strategy in RLQS response: ",
                   rate_limit_strategy.ShortDebugString());
+        continue;
       }
     } else if (action.has_abandon_action()) {
       ENVOY_LOG(debug, "Abandon action is not yet handled properly in RLQS.");
+      continue;
     }
     bucket->bucket_action = action;
   }
@@ -362,11 +331,7 @@ void GlobalRateLimitClientImpl::startSendReportsTimerImpl() {
 }
 
 void GlobalRateLimitClientImpl::onSendReportsTimer() {
-  absl::StatusOr<RateLimitQuotaUsageReports> reports = buildReports();
-  if (!reports.ok()) {
-    ENVOY_LOG(error, "Failed to build a RLQS Usage Reports message: ", reports.status().message());
-    return;
-  }
+  RateLimitQuotaUsageReports reports = buildReports();
   if (stream_closed_) {
     ENVOY_LOG(debug, "The RLQS stream is not currently open. Attempting to start / "
                      "restart it now.");
@@ -376,7 +341,7 @@ void GlobalRateLimitClientImpl::onSendReportsTimer() {
       return;
     }
   }
-  sendUsageReportImpl(*reports);
+  sendUsageReportImpl(reports);
 }
 
 } // namespace RateLimitQuota

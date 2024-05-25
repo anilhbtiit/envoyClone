@@ -13,6 +13,7 @@
 #include "source/common/common/assert.h"
 #include "source/common/common/cleanup.h"
 #include "source/common/common/statusor.h"
+#include "source/common/runtime/runtime_features.h"
 
 namespace Envoy {
 namespace Network {
@@ -62,7 +63,7 @@ class InstanceBase : public Instance {
 public:
   // Network::Address::Instance
   const std::string& asString() const override { return friendly_name_; }
-  absl::string_view asStringView() const override { return friendly_name_; }
+  absl::string_view asStringView() const override { return asString(); }
   // Default logical name is the human-readable name.
   const std::string& logicalName() const override { return asString(); }
   Type type() const override { return type_; }
@@ -85,10 +86,13 @@ class InstanceFactory {
 public:
   template <typename InstanceType, typename... Args>
   static StatusOr<InstanceConstSharedPtr> createInstancePtr(Args&&... args) {
+    const static bool generate_address_string = !Runtime::runtimeFeatureEnabled(
+        "envoy.restart_features.address_factory_lazy_create_address_string");
     absl::Status status;
     // Use new instead of make_shared here because the instance constructors are private and must be
     // called directly here.
-    std::shared_ptr<InstanceType> instance(new InstanceType(status, std::forward<Args>(args)...));
+    std::shared_ptr<InstanceType> instance(
+        new InstanceType(status, generate_address_string, std::forward<Args>(args)...));
     if (!status.ok()) {
       return status;
     }
@@ -96,10 +100,30 @@ public:
   }
 };
 
+class IpInstance : public InstanceBase {
+public:
+  // InstanceBase
+  const std::string& asString() const override;
+
+protected:
+  friend class IpInstancePeer;
+
+  IpInstance(Type type, const SocketInterface* sock_interface)
+      : InstanceBase(type, sock_interface) {}
+
+  virtual std::string generateAddressPortString() const PURE;
+
+  void setAddressPortString(const std::string& str) { address_port_string_ = str; }
+
+private:
+  mutable std::string address_port_string_;
+  mutable std::once_flag populate_address_port_string_;
+};
+
 /**
  * Implementation of an IPv4 address.
  */
-class Ipv4Instance : public InstanceBase {
+class Ipv4Instance : public IpInstance {
 public:
   /**
    * Construct from an existing unix IPv4 socket address (IP v4 address and port).
@@ -154,6 +178,9 @@ public:
    */
   static Envoy::Cleanup forceProtocolUnsupportedForTest(bool new_val);
 
+protected:
+  std::string generateAddressPortString() const override;
+
 private:
   /**
    * Construct from an existing unix IPv4 socket address (IP v4 address and port).
@@ -161,7 +188,8 @@ private:
    * It is called by the factory method and the partially constructed instance will be discarded
    * upon error.
    */
-  explicit Ipv4Instance(absl::Status& error, const sockaddr_in* address,
+  explicit Ipv4Instance(absl::Status& error, bool generate_address_string,
+                        const sockaddr_in* address,
                         const SocketInterface* sock_interface = nullptr);
 
   struct Ipv4Helper : public Ipv4 {
@@ -171,7 +199,7 @@ private:
   };
 
   struct IpHelper : public Ip {
-    const std::string& addressAsString() const override { return friendly_address_; }
+    const std::string& addressAsString() const override;
     bool isAnyAddress() const override { return ipv4_.address_.sin_addr.s_addr == INADDR_ANY; }
     bool isUnicastAddress() const override {
       return !isAnyAddress() && (ipv4_.address_.sin_addr.s_addr != INADDR_BROADCAST) &&
@@ -184,10 +212,11 @@ private:
     IpVersion version() const override { return IpVersion::v4; }
 
     Ipv4Helper ipv4_;
-    std::string friendly_address_;
+    mutable std::string address_string_;
+    mutable std::once_flag populate_address_string_;
   };
 
-  void initHelper(const sockaddr_in* address);
+  void initHelper(const sockaddr_in* address, bool generate_address_string);
 
   IpHelper ip_;
   friend class InstanceFactory;
@@ -196,7 +225,7 @@ private:
 /**
  * Implementation of an IPv6 address.
  */
-class Ipv6Instance : public InstanceBase {
+class Ipv6Instance : public IpInstance {
 public:
   /**
    * Construct from an existing unix IPv6 socket address (IP v6 address and port).
@@ -242,6 +271,9 @@ public:
    */
   static Envoy::Cleanup forceProtocolUnsupportedForTest(bool new_val);
 
+protected:
+  std::string generateAddressPortString() const override;
+
 private:
   /**
    * Construct from an existing unix IPv6 socket address (IP v6 address and port).
@@ -249,8 +281,8 @@ private:
    * It is called by the factory method and the partially constructed instance will be discarded
    * upon error.
    */
-  Ipv6Instance(absl::Status& error, const sockaddr_in6& address, bool v6only = true,
-               const SocketInterface* sock_interface = nullptr);
+  Ipv6Instance(absl::Status& error, bool generate_address_string, const sockaddr_in6& address,
+               bool v6only = true, const SocketInterface* sock_interface = nullptr);
 
   struct Ipv6Helper : public Ipv6 {
     Ipv6Helper() { memset(&address_, 0, sizeof(address_)); }
@@ -271,7 +303,8 @@ private:
   };
 
   struct IpHelper : public Ip {
-    const std::string& addressAsString() const override { return friendly_address_; }
+    const std::string& addressAsString() const override;
+
     bool isAnyAddress() const override {
       return 0 == memcmp(&ipv6_.address_.sin6_addr, &in6addr_any, sizeof(struct in6_addr));
     }
@@ -284,10 +317,11 @@ private:
     IpVersion version() const override { return IpVersion::v6; }
 
     Ipv6Helper ipv6_;
-    std::string friendly_address_;
+    mutable std::string address_string_;
+    mutable std::once_flag populate_address_string_;
   };
 
-  void initHelper(const sockaddr_in6& address, bool v6only);
+  void initHelper(const sockaddr_in6& address, bool v6only, bool generate_address_string);
 
   IpHelper ip_;
   friend class InstanceFactory;
@@ -336,8 +370,8 @@ private:
    * It is called by the factory method and the partially constructed instance will be discarded
    * upon error.
    */
-  PipeInstance(absl::Status& error, const sockaddr_un* address, socklen_t ss_len, mode_t mode = 0,
-               const SocketInterface* sock_interface = nullptr);
+  PipeInstance(absl::Status& error, bool generate_address_string, const sockaddr_un* address,
+               socklen_t ss_len, mode_t mode = 0, const SocketInterface* sock_interface = nullptr);
 
   struct PipeHelper : public Pipe {
 

@@ -55,6 +55,8 @@ TEST_F(DynamicOpenTracingDriverTest, FormatErrorMessage) {
             DynamicOpenTracingDriver::formatErrorMessage(error_code, "abc"));
 }
 
+// TODO(https://github.com/envoyproxy/envoy/issues/34321)
+#if !__has_feature(address_sanitizer)
 TEST_F(DynamicOpenTracingDriverTest, InitializeDriver) {
   {
     std::string invalid_library = "abc123";
@@ -71,6 +73,7 @@ TEST_F(DynamicOpenTracingDriverTest, InitializeDriver) {
     EXPECT_THROW(setup(library_path_, empty_config), EnvoyException);
   }
 }
+#endif
 
 // This test fails under gcc, please see https://github.com/envoyproxy/envoy/issues/7647
 // for more details.

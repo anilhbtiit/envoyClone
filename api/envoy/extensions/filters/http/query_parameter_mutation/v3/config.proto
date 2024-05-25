@@ -1,0 +1,30 @@
+syntax = "proto3";
+
+package envoy.extensions.filters.http.query_parameter_mutation.v3;
+
+import "envoy/config/core/v3/base.proto";
+
+import "xds/annotations/v3/status.proto";
+
+import "udpa/annotations/status.proto";
+
+option java_package = "io.envoyproxy.envoy.extensions.filters.http.query_parameter_mutation.v3";
+option java_outer_classname = "ConfigProto";
+option java_multiple_files = true;
+option go_package = "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/http/query_parameter_mutation/v3;query_parameter_mutationv3";
+option (udpa.annotations.file_status).package_version_status = ACTIVE;
+option (xds.annotations.v3.file_status).work_in_progress = true;
+
+// [#protodoc-title: Query Parameter Mutation]
+// Query Parameter Mutation :ref:`configuration overview <config_http_filters_query_parameter_mutation>`.
+// [#extension: envoy.filters.http.query_parameter_mutation]
+
+// Configures the Query Parameter Mutation filter.
+message Config {
+  // Specifies a list of HTTP query parameters that will be added to the HTTP path. Repeat values are supported. For example,
+  // ``foo: 1, foo: 2`` will appear as "?foo=1&foo=2". Values are added as exact strings, command substitution is not supported.
+  repeated config.core.v3.QueryParameter query_parameters_to_add = 1;
+
+  // Specifies a list of HTTP query parameters that will be removed from the HTTP path.
+  repeated string query_parameters_to_remove = 2;
+}

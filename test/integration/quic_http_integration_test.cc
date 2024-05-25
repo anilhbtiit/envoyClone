@@ -1906,6 +1906,12 @@ TEST_P(QuicHttpIntegrationTest, UsesPreferredAddress) {
       });
 
   initialize();
+  if (!Runtime::runtimeFeatureEnabled(
+          "envoy.reloadable_features.quic_send_server_preferred_address_to_all_clients")) {
+    quic::QuicTagVector connection_options{quic::kSPAD};
+    dynamic_cast<Quic::PersistentQuicInfoImpl&>(*quic_connection_persistent_info_)
+        .quic_config_.SetConnectionOptionsToSend(connection_options);
+  }
   codec_client_ = makeHttpConnection(makeClientConnection(lookupPort("http")));
   EnvoyQuicClientSession* quic_session =
       static_cast<EnvoyQuicClientSession*>(codec_client_->connection());
@@ -1982,6 +1988,12 @@ TEST_P(QuicHttpIntegrationTest, UsesPreferredAddressDNAT) {
       });
 
   initialize();
+  if (!Runtime::runtimeFeatureEnabled(
+          "envoy.reloadable_features.quic_send_server_preferred_address_to_all_clients")) {
+    quic::QuicTagVector connection_options{quic::kSPAD};
+    dynamic_cast<Quic::PersistentQuicInfoImpl&>(*quic_connection_persistent_info_)
+        .quic_config_.SetConnectionOptionsToSend(connection_options);
+  }
   auto listener_port = lookupPort("http");
 
   // Setup DNAT for 0.0.0.0:12345-->127.0.0.2:listener_port
@@ -2110,6 +2122,13 @@ TEST_P(QuicHttpIntegrationTest, UsesPreferredAddressDualStack) {
   });
 
   initialize();
+  if (!Runtime::runtimeFeatureEnabled(
+          "envoy.reloadable_features.quic_send_server_preferred_address_to_all_clients")) {
+    quic::QuicTagVector connection_options{quic::kSPAD};
+    dynamic_cast<Quic::PersistentQuicInfoImpl&>(*quic_connection_persistent_info_)
+        .quic_config_.SetConnectionOptionsToSend(connection_options);
+  }
+
   codec_client_ = makeHttpConnection(makeClientConnection(lookupPort("http")));
   EnvoyQuicClientSession* quic_session =
       static_cast<EnvoyQuicClientSession*>(codec_client_->connection());
@@ -2179,6 +2198,12 @@ TEST_P(QuicHttpIntegrationTest, PreferredAddressDroppedByIncompatibleListenerFil
       });
 
   initialize();
+  if (!Runtime::runtimeFeatureEnabled(
+          "envoy.reloadable_features.quic_send_server_preferred_address_to_all_clients")) {
+    quic::QuicTagVector connection_options{quic::kSPAD};
+    dynamic_cast<Quic::PersistentQuicInfoImpl&>(*quic_connection_persistent_info_)
+        .quic_config_.SetConnectionOptionsToSend(connection_options);
+  }
   codec_client_ = makeHttpConnection(makeClientConnection(lookupPort("http")));
   EnvoyQuicClientSession* quic_session =
       static_cast<EnvoyQuicClientSession*>(codec_client_->connection());

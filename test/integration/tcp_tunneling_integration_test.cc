@@ -1,3 +1,4 @@
+#include <chrono>
 #include <memory>
 
 #include "envoy/config/bootstrap/v3/bootstrap.pb.h"
@@ -846,13 +847,15 @@ public:
 
     upstream_request_->encodeData(response_size, false);
     ASSERT_TRUE(tcp_client_->waitForData(response_size));
-
+    LogLevelSetter save_levels(spdlog::level::trace);
     // Finally close and clean up.
     tcp_client_->close();
+    ENVOY_LOG(info, "Waiting for end stream");
     if (upstreamProtocol() == Http::CodecType::HTTP1) {
-      ASSERT_TRUE(fake_upstream_connection_->waitForDisconnect());
+      ASSERT_TRUE(fake_upstream_connection_->waitForDisconnect(std::chrono::milliseconds(10000)));
     } else {
-      ASSERT_TRUE(upstream_request_->waitForEndStream(*dispatcher_, TestUtility::DefaultTimeout));
+      ASSERT_TRUE(
+          upstream_request_->waitForEndStream(*dispatcher_, std::chrono::milliseconds(10000)));
     }
   }
 
@@ -916,8 +919,7 @@ TEST_P(TcpTunnelingIntegrationTest, UpstreamHttpFiltersPauseAndResume) {
 }
 
 TEST_P(TcpTunnelingIntegrationTest, FlowControlOnAndGiantBody) {
-  ENVOY_LOG_MISC(warn, "manually lowering logs to error");
-  LogLevelSetter save_levels(spdlog::level::trace);
+  LogLevelSetter save_levels(spdlog::level::warn);
   config_helper_.setBufferLimits(1024, 1024);
   initialize();
   testGiantRequestAndResponse(10 * 1024 * 1024, 10 * 1024 * 1024);

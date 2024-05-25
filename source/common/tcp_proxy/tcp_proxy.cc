@@ -328,6 +328,7 @@ void Filter::readDisableUpstream(bool disable) {
 }
 
 void Filter::readDisableDownstream(bool disable) {
+  ENVOY_CONN_LOG(warn, "disabling downstream {}", read_callbacks_->connection(), disable);
   if (read_callbacks_->connection().state() != Network::Connection::State::Open) {
     // During idle timeouts, we close both upstream and downstream with NoFlush.
     // Envoy still does a best-effort flush which can case readDisableDownstream to be called
@@ -391,6 +392,8 @@ void Filter::UpstreamCallbacks::onBelowWriteBufferLowWatermark() {
   // TCP Tunneling may call on high/low watermark multiple times.
   ASSERT(parent_->config_->tunnelingConfigHelper() || on_high_watermark_called_);
   on_high_watermark_called_ = false;
+  ENVOY_CONN_LOG(warn, "below upstream low watermark, parent_ there: {}",
+                 parent_->read_callbacks_->connection(), parent_ != nullptr);
 
   if (parent_ != nullptr) {
     // The upstream write buffer is drained. Resume reading.
@@ -747,6 +750,10 @@ void Filter::onConnectTimeout() {
 }
 
 Network::FilterStatus Filter::onData(Buffer::Instance& data, bool end_stream) {
+  if (end_stream) {
+    ENVOY_CONN_LOG(info, "downstream connection received {} bytes, end_stream={}, has upstream {}",
+                   read_callbacks_->connection(), data.length(), end_stream, upstream_ != nullptr);
+  }
   ENVOY_CONN_LOG(trace, "downstream connection received {} bytes, end_stream={}, has upstream {}",
                  read_callbacks_->connection(), data.length(), end_stream, upstream_ != nullptr);
   getStreamInfo().getDownstreamBytesMeter()->addWireBytesReceived(data.length());

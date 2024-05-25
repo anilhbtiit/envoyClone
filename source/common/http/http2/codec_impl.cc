@@ -1676,10 +1676,14 @@ void ConnectionImpl::onUnderlyingConnectionBelowWriteBufferLowWatermark() {
   if (Runtime::runtimeFeatureEnabled(Runtime::defer_processing_backedup_streams)) {
     // Notify the streams based on least recently encoding to the connection.
     for (auto it = active_streams_.rbegin(); it != active_streams_.rend(); ++it) {
+      ENVOY_CONN_LOG(warn, "onUnderlyingConnectionBelowWriteBufferLowWatermark for stream {}",
+                     connection_, (*it)->stream_id_);
       (*it)->runLowWatermarkCallbacks();
     }
   } else {
     for (auto& stream : active_streams_) {
+      ENVOY_CONN_LOG(warn, "onUnderlyingConnectionBelowWriteBufferLowWatermark for stream {}",
+                     connection_, stream->stream_id_);
       stream->runLowWatermarkCallbacks();
     }
   }

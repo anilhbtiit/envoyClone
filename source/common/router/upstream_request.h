@@ -85,7 +85,7 @@ public:
   virtual void resetStream();
   void setupPerTryTimeout();
   void maybeEndDecode(bool end_stream);
-  void onUpstreamHostSelected(Upstream::HostDescriptionConstSharedPtr host, bool pool_success);
+  void onUpstreamHostSelected(Upstream::HostDescriptionConstSharedPtr real_host, bool success);
 
   // Http::StreamDecoder
   void decodeData(Buffer::Instance& data, bool end_stream) override;
@@ -195,6 +195,7 @@ private:
   std::unique_ptr<GenericUpstream> upstream_;
   absl::optional<Http::StreamResetReason> deferred_reset_reason_;
   Upstream::HostDescriptionConstSharedPtr upstream_host_;
+  std::shared_ptr<StreamInfo::UpstreamInfoImpl> upstream_info_;
   DownstreamWatermarkManager downstream_watermark_manager_{*this};
   Tracing::SpanPtr span_;
   StreamInfo::StreamInfoImpl stream_info_;

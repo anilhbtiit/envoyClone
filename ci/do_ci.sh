@@ -864,6 +864,7 @@ case $CI_TARGET in
                 --remote_download_minimal \
                 --test_arg="-l trace" \
                 "${BAZEL_RELEASE_OPTIONS[@]}" \
+                --experimental_ui_max_stdouterr_bytes=80000000 \
                 "//contrib/golang/filters/http/test:golang_integration_test"
                 # "${TEST_TARGETS[@]}"
         fi

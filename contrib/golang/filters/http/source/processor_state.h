@@ -110,7 +110,6 @@ public:
   bool isBufferDataEmpty() { return data_buffer_ == nullptr || data_buffer_->length() == 0; };
   void drainBufferData();
 
-  // void setSeenTrailers() { seen_trailers_ = true; }
   bool isProcessingEndStream() { return do_end_stream_; }
 
   virtual void continueProcessing() PURE;
@@ -175,7 +174,6 @@ protected:
   Buffer::InstancePtr data_buffer_{nullptr};
   bool end_stream_{false};
   bool do_end_stream_{false};
-  // bool seen_trailers_{false};
 };
 
 class DecodingProcessorState : public ProcessorState {

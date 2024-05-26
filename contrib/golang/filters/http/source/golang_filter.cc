@@ -575,6 +575,7 @@ CAPIStatus Filter::continueStatus(ProcessorState& state, GolangStatus status) {
   // TODO: skip post event to dispatcher, and return continue in the caller,
   // when it's invoked in the current envoy thread, for better performance & latency.
   state.getDispatcher().post([this, &state, weak_ptr, status] {
+    ENVOY_LOG(debug, "golang filter continue status in callback");
     if (!weak_ptr.expired() && !hasDestroyed()) {
       ASSERT(state.isThreadSafe());
       continueStatusInternal(state, status);

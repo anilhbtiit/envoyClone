@@ -146,7 +146,7 @@ void ConnectionImpl::close(ConnectionCloseType type) {
   }
 
   uint64_t data_to_write = write_buffer_->length();
-  ENVOY_CONN_LOG_EVENT(debug, "connection_closing", "closing data_to_write={} type={}", *this,
+  ENVOY_CONN_LOG_EVENT(warn, "connection_closing", "closing data_to_write={} type={}", *this,
                        data_to_write, enumToInt(type));
 
   // The connection is closed by Envoy by sending RST, and the connection is closed immediately.
@@ -273,7 +273,7 @@ void ConnectionImpl::closeSocket(ConnectionEvent close_type) {
     delayed_close_timer_ = nullptr;
   }
 
-  ENVOY_CONN_LOG(debug, "closing socket: {}", *this, static_cast<uint32_t>(close_type));
+  ENVOY_CONN_LOG(warn, "closing socket: {}", *this, static_cast<uint32_t>(close_type));
   transport_socket_->closeSocket(close_type);
 
   // Drain input and output buffers.
@@ -466,6 +466,10 @@ Connection::ReadDisableStatus ConnectionImpl::readDisable(bool disable) {
 }
 
 void ConnectionImpl::raiseEvent(ConnectionEvent event) {
+  if (ConnectionEvent::LocalClose == event) {
+    // If the connection is closed, we should not be reading from the transport.
+    ENVOY_CONN_LOG(warn, "raising connection event {}", *this, static_cast<int>(event));
+  }
   ENVOY_CONN_LOG(trace, "raising connection event {}", *this, static_cast<int>(event));
   ConnectionImplBase::raiseConnectionEvent(event);
   // We may have pending data in the write buffer on transport handshake
@@ -711,7 +715,7 @@ void ConnectionImpl::onReadReady() {
 
   // The read callback may have already closed the connection.
   if (result.action_ == PostIoAction::Close || bothSidesHalfClosed()) {
-    ENVOY_CONN_LOG(debug, "remote close", *this);
+    ENVOY_CONN_LOG(warn, "remote close", *this);
     closeSocket(ConnectionEvent::RemoteClose);
   }
 }

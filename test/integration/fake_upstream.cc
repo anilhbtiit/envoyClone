@@ -305,6 +305,7 @@ AssertionResult FakeStream::waitForEndStream(Event::Dispatcher& client_dispatche
           time_system_, lock_,
           [this]() ABSL_EXCLUSIVE_LOCKS_REQUIRED(lock_) { return end_stream_; }, client_dispatcher,
           timeout)) {
+    ENVOY_LOG(error, "FakeStream waitForEndStream timed out");
     return AssertionFailure() << "Timed out waiting for end of stream.";
   }
   return AssertionSuccess();
@@ -518,7 +519,7 @@ void FakeHttpConnection::encodeProtocolError() {
 }
 
 AssertionResult FakeConnectionBase::waitForDisconnect(milliseconds timeout) {
-  ENVOY_LOG(trace, "FakeConnectionBase waiting for disconnect");
+  ENVOY_LOG(warn, "FakeConnectionBase waiting for disconnect");
   absl::MutexLock lock(&lock_);
   const auto reached = [this]() ABSL_EXCLUSIVE_LOCKS_REQUIRED(lock_) {
     return !shared_connection_.connectedLockHeld();
@@ -528,6 +529,7 @@ AssertionResult FakeConnectionBase::waitForDisconnect(milliseconds timeout) {
     if (timeout == TestUtility::DefaultTimeout) {
       ADD_FAILURE() << "Please don't waitForDisconnect with a 5s timeout if failure is expected\n";
     }
+    ENVOY_LOG(warn, "FakeConnectionBase done waiting for disconnect");
     return AssertionFailure() << "Timed out waiting for disconnect.";
   }
   ENVOY_LOG(trace, "FakeConnectionBase done waiting for disconnect");

@@ -47,6 +47,26 @@ enum class Result {
   ExtOriginRequestSuccess // Request was completed successfully.
 };
 
+// Types of outlier detection extension results which can be reported.
+enum class ExtResultType;
+
+/*
+ * Class carries result of a transaction with upstream entity
+ * or generated internally by Envoy.
+ * Different categories of results will be derived from that base class.
+ * Those categories of results are fed only into Outlier Detection extensions.
+ */
+class ExtResult {
+public:
+  ExtResult() = delete;
+  ExtResult(ExtResultType type) : type_(type) {}
+  virtual ExtResultType type() const { return type_; };
+  virtual ~ExtResult() = default;
+
+private:
+  const ExtResultType type_;
+};
+
 /**
  * Monitor for per host data. Proxy filters should send pertinent data when available.
  */
@@ -110,6 +130,22 @@ public:
    * and LocalOrigin type returns success rate for local origin errors.
    */
   virtual double successRate(SuccessRateMonitorType type) const PURE;
+
+  /* Returns name of failed extension monitor.
+     Returns empty string if failure was not in extensions.
+  */
+  virtual std::string getFailedExtensionMonitorName() const PURE;
+
+  /* Returns extra info which extension monitor wants to add to
+     event logger.
+     Returns empty string if failure was not in extensions.
+  */
+  virtual std::string getFailedExtensionMonitorExtraInfo() const PURE;
+
+  /* Returns ejection enforcing parameter configured in extension
+     monitor which failed.
+  */
+  virtual uint32_t getFailedExtensionMonitorEnforce() const PURE;
 };
 
 using DetectorHostMonitorPtr = std::unique_ptr<DetectorHostMonitor>;

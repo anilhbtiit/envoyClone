@@ -215,9 +215,11 @@ envoy_cc_library(
     name = "server_context_lib",
     srcs = [
         "server_context_impl.cc",
+        "tls_certificate_selector_impl.cc",
     ],
     hdrs = [
         "server_context_impl.h",
+        "tls_certificate_selector_impl.h",
     ],
     deps = [
         ":context_lib",

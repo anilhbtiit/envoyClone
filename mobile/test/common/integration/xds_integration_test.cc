@@ -4,6 +4,7 @@
 #include "envoy/config/cluster/v3/cluster.pb.h"
 
 #include "source/common/tls/server_context_impl.h"
+#include "source/common/tls/tls_certificate_selector_impl.h"
 
 #include "test/common/grpc/grpc_client_integration.h"
 #include "test/common/integration/base_client_integration_test.h"
@@ -30,6 +31,7 @@ void XdsIntegrationTest::initialize() {
   ExtensionRegistry::registerFactories();
   // For server TLS.
   Extensions::TransportSockets::Tls::forceRegisterServerContextFactoryImpl();
+  Extensions::TransportSockets::Tls::forceRegisterTlsCertificateSelectorFactoryImpl();
 
   if (sotw_or_delta_ == Grpc::SotwOrDelta::UnifiedSotw ||
       sotw_or_delta_ == Grpc::SotwOrDelta::UnifiedDelta) {

@@ -82,6 +82,7 @@ ServerContextImpl::ServerContextImpl(Stats::Scope& scope,
                                      Server::Configuration::CommonFactoryContext& factory_context,
                                      Ssl::ContextAdditionalInitFunc additional_init)
     : ContextImpl(scope, config, factory_context, additional_init),
+      tls_certificate_selector_factory_cb_(config.createTlsCertificateSelector()),
       session_ticket_keys_(config.sessionTicketKeys()),
       ocsp_staple_policy_(config.ocspStaplePolicy()),
       full_scan_certs_on_sni_mismatch_(config.fullScanCertsOnSNIMismatch()) {
@@ -636,45 +637,56 @@ ServerContextImpl::findTlsContext(absl::string_view sni, bool client_ecdsa_capab
 
 enum ssl_select_cert_result_t
 ServerContextImpl::selectTlsContext(const SSL_CLIENT_HELLO* ssl_client_hello) {
-  absl::string_view sni = absl::NullSafeStringView(
-      SSL_get_servername(ssl_client_hello->ssl, TLSEXT_NAMETYPE_host_name));
-  const bool client_ecdsa_capable = isClientEcdsaCapable(ssl_client_hello);
-  const bool client_ocsp_capable = isClientOcspCapable(ssl_client_hello);
-
-  auto [selected_ctx, ocsp_staple_action] =
-      findTlsContext(sni, client_ecdsa_capable, client_ocsp_capable, nullptr);
-
-  // Apply the selected context. This must be done before OCSP stapling below
-  // since applying the context can remove the previously-set OCSP response.
-  // This will only return NULL if memory allocation fails.
-  RELEASE_ASSERT(SSL_set_SSL_CTX(ssl_client_hello->ssl, selected_ctx.ssl_ctx_.get()) != nullptr,
-                 "");
-
-  if (client_ocsp_capable) {
-    stats_.ocsp_staple_requests_.inc();
+  if (tls_certificate_selector_ == nullptr) {
+    // Lazy init the provider here since we can not use shared_from_this in construct method.
+    tls_certificate_selector_ = tls_certificate_selector_factory_cb_(shared_from_this());
   }
+  ASSERT(tls_certificate_selector_ != nullptr);
 
-  switch (ocsp_staple_action) {
-  case OcspStapleAction::Staple: {
-    // We avoid setting the OCSP response if the client didn't request it, but doing so is safe.
-    RELEASE_ASSERT(selected_ctx.ocsp_response_,
-                   "OCSP response must be present under OcspStapleAction::Staple");
-    auto& resp_bytes = selected_ctx.ocsp_response_->rawBytes();
-    int rc = SSL_set_ocsp_response(ssl_client_hello->ssl, resp_bytes.data(), resp_bytes.size());
-    RELEASE_ASSERT(rc != 0, "");
-    stats_.ocsp_staple_responses_.inc();
-  } break;
-  case OcspStapleAction::NoStaple:
-    stats_.ocsp_staple_omitted_.inc();
+  auto* extended_socket_info = reinterpret_cast<Envoy::Ssl::SslExtendedSocketInfo*>(
+      SSL_get_ex_data(ssl_client_hello->ssl, ContextImpl::sslExtendedSocketInfoIndex()));
+
+  auto selection_result = extended_socket_info->CertSelectionResult();
+  switch (selection_result) {
+  case Ssl::CertSelectionStatus::NotStarted:
+    // continue
     break;
-  case OcspStapleAction::Fail:
-    stats_.ocsp_staple_failed_.inc();
+
+  case Ssl::CertSelectionStatus::Pending:
+    ENVOY_LOG(trace, "already waiting certificate");
+    return ssl_select_cert_retry;
+
+  case Ssl::CertSelectionStatus::Successful:
+    ENVOY_LOG(trace, "wait certificate success");
+    return ssl_select_cert_success;
+
+  default:
+    ENVOY_LOG(trace, "wait certificate failed");
     return ssl_select_cert_error;
-  case OcspStapleAction::ClientNotCapable:
-    break;
   }
 
-  return ssl_select_cert_success;
+  ENVOY_LOG(trace, "TLS context selection result: {}, before selectTlsContext",
+            static_cast<int>(selection_result));
+
+  const auto result = tls_certificate_selector_->selectTlsContext(
+      ssl_client_hello, extended_socket_info->createCertSelectionCallback(ssl_client_hello->ssl));
+
+  ENVOY_LOG(trace, "TLS context selection result: {}, after selectTlsContext",
+            static_cast<int>(extended_socket_info->CertSelectionResult()));
+
+  switch (result) {
+  case Ssl::SelectionResult::Continue:
+    RELEASE_ASSERT(extended_socket_info->CertSelectionResult() ==
+                       Ssl::CertSelectionStatus::Successful,
+                   "missing onCertSelectionResult before continue");
+    return ssl_select_cert_success;
+  case Ssl::SelectionResult::Stop:
+    extended_socket_info->setCertSelectionAsync();
+    return ssl_select_cert_retry;
+  case Ssl::SelectionResult::Terminate:
+    return ssl_select_cert_error;
+  }
+  PANIC_DUE_TO_CORRUPT_ENUM;
 }
 
 REGISTER_FACTORY(ServerContextFactoryImpl, ServerContextFactory);

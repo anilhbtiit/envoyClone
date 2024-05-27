@@ -14,6 +14,9 @@
 namespace Envoy {
 namespace Ssl {
 
+// Opaque type defined and used by the ``ServerContext``.
+struct TlsContext;
+
 class HandshakeCallbacks {
 public:
   virtual ~HandshakeCallbacks() = default;
@@ -45,6 +48,12 @@ public:
    * asynchronous.
    */
   virtual void onAsynchronousCertValidationComplete() PURE;
+
+  /**
+   * A callback to be called upon certificate selection completion if the selection is
+   * asynchronous.
+   */
+  virtual void onAsynchronousCertSelectionComplete() PURE;
 };
 
 /**
@@ -154,6 +163,97 @@ public:
    * API and other factory context methods.
    */
   virtual SslCtxCb sslctxCb(HandshakerFactoryContext& handshaker_factory_context) const PURE;
+};
+
+enum class SelectionResult {
+  // continue the TLS handshake.
+  Continue,
+  // block the TLS handshake.
+  Stop,
+  // terminate the TLS handshake.
+  Terminate
+};
+
+/**
+ * Used to return the result from an synchronous/asynchronous cert selection.
+ */
+class CertSelectionCallback {
+public:
+  virtual ~CertSelectionCallback() = default;
+
+  virtual Event::Dispatcher& dispatcher() PURE;
+
+  /**
+   * Called when the cert selection completes.
+   * It's safe to call it even the SSL connection may be terminated early.
+   */
+  virtual void onCertSelectionResult(bool succeeded, const Ssl::TlsContext& selected_ctx,
+                                     bool staple) PURE;
+};
+
+using CertSelectionCallbackSharedPtr = std::shared_ptr<CertSelectionCallback>;
+
+class TlsCertificateSelector {
+public:
+  virtual ~TlsCertificateSelector() = default;
+
+  /**
+   * select TLS context based on the client hello.
+   */
+  virtual SelectionResult selectTlsContext(const SSL_CLIENT_HELLO* ssl_client_hello,
+                                           CertSelectionCallbackSharedPtr cb) PURE;
+};
+
+using TlsCertificateSelectorSharedPtr = std::shared_ptr<TlsCertificateSelector>;
+
+class ContextSelectionCallback {
+public:
+  virtual ~ContextSelectionCallback() = default;
+
+  /**
+   * @return reference to the existing Tls Contexts.
+   */
+  virtual const std::vector<TlsContext>& getTlsContexts() const PURE;
+};
+
+using ContextSelectionCallbackWeakPtr = std::weak_ptr<ContextSelectionCallback>;
+
+using TlsCertificateSelectorFactoryCb =
+    std::function<TlsCertificateSelectorSharedPtr(ContextSelectionCallbackWeakPtr)>;
+
+class TlsCertificateSelectorFactoryContext {
+public:
+  virtual ~TlsCertificateSelectorFactoryContext() = default;
+
+  /**
+   * Returns the singleton manager.
+   */
+  virtual Singleton::Manager& singletonManager() PURE;
+
+  /**
+   * @return reference to the server options
+   */
+  virtual const Server::Options& options() const PURE;
+
+  /**
+   * @return reference to the Api object
+   */
+  virtual Api::Api& api() PURE;
+};
+
+class TlsCertificateSelectorFactory : public Config::TypedFactory {
+public:
+  /**
+   * @returns a callback to create a TlsCertificateSelector. Accepts the |config| and
+   * |validation_visitor| for early validation. This virtual base doesn't
+   * perform MessageUtil::downcastAndValidate, but an implementation should.
+   */
+  virtual TlsCertificateSelectorFactoryCb createTlsCertificateSelectorCb(
+      const ProtobufWkt::Any& config,
+      TlsCertificateSelectorFactoryContext& tls_certificate_selector_factory_context,
+      ProtobufMessage::ValidationVisitor& validation_visitor) PURE;
+
+  std::string category() const override { return "envoy.ssl.certificate_selector_factory"; }
 };
 
 } // namespace Ssl

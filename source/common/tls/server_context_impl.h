@@ -40,12 +40,19 @@ namespace Tls {
 
 enum class OcspStapleAction { Staple, NoStaple, Fail, ClientNotCapable };
 
-class ServerContextImpl : public ContextImpl, public Envoy::Ssl::ServerContext {
+class ServerContextImpl : public ContextImpl,
+                          public Envoy::Ssl::ServerContext,
+                          public Envoy::Ssl::ContextSelectionCallback,
+                          public std::enable_shared_from_this<ServerContextImpl> {
 public:
   ServerContextImpl(Stats::Scope& scope, const Envoy::Ssl::ServerContextConfig& config,
                     const std::vector<std::string>& server_names,
                     Server::Configuration::CommonFactoryContext& factory_context,
                     Ssl::ContextAdditionalInitFunc additional_init);
+
+  // Ssl::ContextSelectionCallback
+  // The returned vector has the same life-time as the Ssl::ContextSelectionCallback.
+  const std::vector<Ssl::TlsContext>& getTlsContexts() const override { return tls_contexts_; };
 
   // Select the TLS certificate context in SSL_CTX_set_select_certificate_cb() callback with
   // ClientHello details. This is made public for use by custom TLS extensions who want to
@@ -58,6 +65,8 @@ public:
                                                                      bool client_ecdsa_capable,
                                                                      bool client_ocsp_capable,
                                                                      bool* cert_matched_sni);
+  bool isClientEcdsaCapable(const SSL_CLIENT_HELLO* ssl_client_hello);
+  bool isClientOcspCapable(const SSL_CLIENT_HELLO* ssl_client_hello);
 
 private:
   // Currently, at most one certificate of a given key type may be specified for each exact
@@ -76,12 +85,12 @@ private:
                          unsigned int inlen);
   int sessionTicketProcess(SSL* ssl, uint8_t* key_name, uint8_t* iv, EVP_CIPHER_CTX* ctx,
                            HMAC_CTX* hmac_ctx, int encrypt);
-  bool isClientEcdsaCapable(const SSL_CLIENT_HELLO* ssl_client_hello);
-  bool isClientOcspCapable(const SSL_CLIENT_HELLO* ssl_client_hello);
   OcspStapleAction ocspStapleAction(const Ssl::TlsContext& ctx, bool client_ocsp_capable);
 
   SessionContextID generateHashForSessionContextId(const std::vector<std::string>& server_names);
 
+  Ssl::TlsCertificateSelectorFactoryCb tls_certificate_selector_factory_cb_;
+  Ssl::TlsCertificateSelectorSharedPtr tls_certificate_selector_;
   const std::vector<Envoy::Ssl::ServerContextConfig::SessionTicketKey> session_ticket_keys_;
   const Ssl::ServerContextConfig::OcspStaplePolicy ocsp_staple_policy_;
   ServerNamesMap server_names_map_;

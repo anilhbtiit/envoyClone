@@ -9,6 +9,7 @@
 #include "source/common/common/empty_string.h"
 #include "source/common/config/datasource.h"
 #include "source/common/network/cidr_range.h"
+#include "source/common/protobuf/message_validator_impl.h"
 #include "source/common/protobuf/utility.h"
 #include "source/common/secret/sds_api.h"
 #include "source/common/ssl/certificate_validation_context_config_impl.h"
@@ -450,6 +451,27 @@ ServerContextConfigImpl::ServerContextConfigImpl(
     session_timeout_ =
         std::chrono::seconds(DurationUtil::durationToSeconds(config.session_timeout()));
   }
+
+  TlsCertificateSelectorFactoryContextImpl provider_factory_context(api_, options_,
+                                                                    singleton_manager_);
+  if (config.common_tls_context().has_custom_tls_certificate_selector()) {
+    // If a custom tls context provider is configured, derive the factory from the config.
+    const auto& provider_config = config.common_tls_context().custom_tls_certificate_selector();
+    Ssl::TlsCertificateSelectorFactory* provider_factory =
+        &Config::Utility::getAndCheckFactory<Ssl::TlsCertificateSelectorFactory>(provider_config);
+    tls_certificate_selector_factory_cb_ = provider_factory->createTlsCertificateSelectorCb(
+        provider_config.typed_config(), provider_factory_context,
+        factory_context.messageValidationVisitor());
+  } else {
+    auto factory = Envoy::Config::Utility::getFactoryByName<Ssl::TlsCertificateSelectorFactory>(
+        "envoy.ssl.certificate_selector_factory.default");
+    // mobile build doesn't have server_context.
+    if (factory) {
+      const ProtobufWkt::Any any;
+      tls_certificate_selector_factory_cb_ = factory->createTlsCertificateSelectorCb(
+          any, provider_factory_context, ProtobufMessage::getNullValidationVisitor());
+    }
+  }
 }
 
 void ServerContextConfigImpl::setSecretUpdateCallback(std::function<void()> callback) {
@@ -518,6 +540,13 @@ Ssl::ServerContextConfig::OcspStaplePolicy ServerContextConfigImpl::ocspStaplePo
     return Ssl::ServerContextConfig::OcspStaplePolicy::MustStaple;
   }
   PANIC_DUE_TO_CORRUPT_ENUM;
+}
+
+Ssl::TlsCertificateSelectorFactoryCb ServerContextConfigImpl::createTlsCertificateSelector() const {
+  if (!tls_certificate_selector_factory_cb_) {
+    IS_ENVOY_BUG("No envoy.ssl.certificate_selector_factory registered");
+  }
+  return tls_certificate_selector_factory_cb_;
 }
 
 } // namespace Tls

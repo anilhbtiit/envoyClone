@@ -6,6 +6,7 @@
 #include "source/common/common/empty_string.h"
 #include "source/common/http/headers.h"
 #include "source/common/runtime/runtime_features.h"
+#include "source/common/tls/context_impl.h"
 #include "source/common/tls/utility.h"
 
 using Envoy::Network::PostIoAction;
@@ -29,9 +30,40 @@ void ValidateResultCallbackImpl::onCertValidationResult(bool succeeded,
   extended_socket_info_->onCertificateValidationCompleted(succeeded, true);
 }
 
+void CertSelectionCallbackImpl::onSslHandshakeCancelled() { extended_socket_info_.reset(); }
+
+void CertSelectionCallbackImpl::onCertSelectionResult(bool succeeded,
+                                                      const Ssl::TlsContext& selected_ctx,
+                                                      bool staple) {
+  ENVOY_LOG(debug, "onCertSelectionResult: {}, {}", succeeded, staple);
+  if (!extended_socket_info_.has_value()) {
+    ENVOY_LOG(debug, "extended socket info is gone, maybe connection terminated");
+    return;
+  }
+  if (succeeded) {
+    // Apply the selected context. This must be done before OCSP stapling below
+    // since applying the context can remove the previously-set OCSP response.
+    // This will only return NULL if memory allocation fails.
+    RELEASE_ASSERT(SSL_set_SSL_CTX(ssl_, selected_ctx.ssl_ctx_.get()) != nullptr, "");
+
+    if (staple) {
+      // We avoid setting the OCSP response if the client didn't request it, but doing so is safe.
+      RELEASE_ASSERT(selected_ctx.ocsp_response_,
+                     "OCSP response must be present under OcspStapleAction::Staple");
+      auto& resp_bytes = selected_ctx.ocsp_response_->rawBytes();
+      const int rc = SSL_set_ocsp_response(ssl_, resp_bytes.data(), resp_bytes.size());
+      RELEASE_ASSERT(rc != 0, "");
+    }
+  }
+  extended_socket_info_->onCertSelectionCompleted(succeeded);
+}
+
 SslExtendedSocketInfoImpl::~SslExtendedSocketInfoImpl() {
   if (cert_validate_result_callback_.has_value()) {
     cert_validate_result_callback_->onSslHandshakeCancelled();
+  }
+  if (cert_selection_callback_ != nullptr) {
+    cert_selection_callback_->onSslHandshakeCancelled();
   }
 }
 
@@ -62,6 +94,35 @@ Ssl::ValidateResultCallbackPtr SslExtendedSocketInfoImpl::createValidateResultCa
   cert_validate_result_callback_ = *callback;
   cert_validation_result_ = Ssl::ValidateStatus::Pending;
   return callback;
+}
+
+void SslExtendedSocketInfoImpl::onCertSelectionCompleted(bool succeeded) {
+  RELEASE_ASSERT(cert_selection_result_ != Ssl::CertSelectionStatus::Successful &&
+                     cert_selection_result_ != Ssl::CertSelectionStatus::Failed,
+                 "onCertSelectionCompleted twice");
+  const bool async = cert_selection_result_ == Ssl::CertSelectionStatus::Pending;
+  cert_selection_result_ =
+      succeeded ? Ssl::CertSelectionStatus::Successful : Ssl::CertSelectionStatus::Failed;
+  if (cert_selection_callback_ != nullptr) {
+    cert_selection_callback_.reset();
+    // Resume handshake.
+    if (async) {
+      ssl_handshaker_.handshakeCallbacks()->onAsynchronousCertSelectionComplete();
+    }
+  }
+}
+
+void SslExtendedSocketInfoImpl::setCertSelectionAsync() {
+  RELEASE_ASSERT(cert_selection_result_ == Ssl::CertSelectionStatus::NotStarted,
+                 "unexpected cert selection result");
+  cert_selection_result_ = Ssl::CertSelectionStatus::Pending;
+}
+
+Ssl::CertSelectionCallbackSharedPtr
+SslExtendedSocketInfoImpl::createCertSelectionCallback(SSL* ssl) {
+  cert_selection_callback_ = std::make_shared<CertSelectionCallbackImpl>(
+      ssl, ssl_handshaker_.handshakeCallbacks()->connection().dispatcher(), *this);
+  return cert_selection_callback_;
 }
 
 SslHandshakerImpl::SslHandshakerImpl(bssl::UniquePtr<SSL> ssl, int ssl_extended_socket_info_index,
@@ -95,6 +156,7 @@ Network::PostIoAction SslHandshakerImpl::doHandshake() {
     case SSL_ERROR_WANT_READ:
     case SSL_ERROR_WANT_WRITE:
       return PostIoAction::KeepOpen;
+    case SSL_ERROR_PENDING_CERTIFICATE:
     case SSL_ERROR_WANT_PRIVATE_KEY_OPERATION:
     case SSL_ERROR_WANT_CERTIFICATE_VERIFY:
       state_ = Ssl::SocketState::HandshakeInProgress;

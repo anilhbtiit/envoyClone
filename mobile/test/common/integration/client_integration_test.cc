@@ -2,6 +2,7 @@
 #include "source/common/quic/server_codec_impl.h"
 #include "source/common/tls/cert_validator/default_validator.h"
 #include "source/common/tls/server_context_impl.h"
+#include "source/common/tls/tls_certificate_selector_impl.h"
 #include "source/extensions/http/header_formatters/preserve_case/preserve_case_formatter.h"
 #include "source/extensions/quic/connection_id_generator/envoy_deterministic_connection_id_generator_config.h"
 #include "source/extensions/quic/crypto_stream/envoy_quic_crypto_server_stream.h"
@@ -65,6 +66,7 @@ public:
   ClientIntegrationTest() : BaseClientIntegrationTest(/*ip_version=*/std::get<0>(GetParam())) {
     // For server TLS
     Extensions::TransportSockets::Tls::forceRegisterServerContextFactoryImpl();
+    Extensions::TransportSockets::Tls::forceRegisterTlsCertificateSelectorFactoryImpl();
     // For H3 tests.
     Network::forceRegisterUdpDefaultWriterFactoryFactory();
     Quic::forceRegisterEnvoyQuicCryptoServerStreamFactoryImpl();

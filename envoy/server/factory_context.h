@@ -200,6 +200,12 @@ public:
    * @return OverloadManager& the overload manager for the server.
    */
   virtual OverloadManager& overloadManager() PURE;
+  
+  /**
+   * @return NullOverloadManager& the dummy overload manager for the server for
+   * listeners that are bypassing a configured OverloadManager
+   */
+  virtual OverloadManager& nullOverloadManager() PURE;
 
   /**
    * @return whether external healthchecks are currently failed or not.

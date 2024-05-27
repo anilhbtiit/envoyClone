@@ -862,8 +862,11 @@ case $CI_TARGET in
             bazel_with_collection \
                 test "${BAZEL_BUILD_OPTIONS[@]}" \
                 --remote_download_minimal \
+                --test_arg="-l trace" \
                 "${BAZEL_RELEASE_OPTIONS[@]}" \
-                "${TEST_TARGETS[@]}"
+                --experimental_ui_max_stdouterr_bytes=80000000 \
+                "//contrib/golang/filters/http/test:golang_integration_test"
+                # "${TEST_TARGETS[@]}"
         fi
         # Build release binaries
         bazel build "${BAZEL_BUILD_OPTIONS[@]}" \

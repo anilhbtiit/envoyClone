@@ -68,7 +68,7 @@ jobs:
 
     - name: Initialize CodeQL
       if: ${{ env.BUILD_TARGETS != '' }}
-      uses: github/codeql-action/init@9fdb3e49720b44c48891d036bb502feb25684276  # codeql-bundle-v3.25.6
+      uses: github/codeql-action/init@f0f3afee809481da311ca3a6ff1ff51d81dbeb24  # codeql-bundle-v3.26.4
       with:
         languages: cpp
 
@@ -112,4 +112,4 @@ jobs:
 
     - name: Perform CodeQL Analysis
       if: ${{ env.BUILD_TARGETS != '' }}
-      uses: github/codeql-action/analyze@9fdb3e49720b44c48891d036bb502feb25684276  # codeql-bundle-v3.25.6
+      uses: github/codeql-action/analyze@f0f3afee809481da311ca3a6ff1ff51d81dbeb24  # codeql-bundle-v3.26.4
